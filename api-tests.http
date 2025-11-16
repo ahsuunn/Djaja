@@ -1,0 +1,303 @@
+# API Testing with REST Client (VS Code Extension)
+# Install "REST Client" extension by Huachao Mao
+
+### Variables
+@baseUrl = http://localhost:5000/api
+@token = your-jwt-token-here
+
+### Health Check
+GET {{baseUrl}}/../health
+
+### ========================================
+### AUTHENTICATION
+### ========================================
+
+### Register a Doctor
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Dr. Ahmad Suryanto",
+  "email": "doctor@djaja.com",
+  "password": "password123",
+  "role": "doctor",
+  "licenseNumber": "DOC-2024-001",
+  "specialization": "General Practitioner",
+  "phoneNumber": "+6281234567890"
+}
+
+### Register a Nakes (Healthcare Worker)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Siti Nurhaliza",
+  "email": "nakes@djaja.com",
+  "password": "password123",
+  "role": "nakes",
+  "phoneNumber": "+6281234567891"
+}
+
+### Register an Admin
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Admin User",
+  "email": "admin@djaja.com",
+  "password": "password123",
+  "role": "admin",
+  "phoneNumber": "+6281234567892"
+}
+
+### Login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "doctor@djaja.com",
+  "password": "password123"
+}
+
+### Get Current User
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{token}}
+
+### ========================================
+### PATIENTS
+### ========================================
+
+### Get All Patients
+GET {{baseUrl}}/patients
+Authorization: Bearer {{token}}
+
+### Get Patient by ID
+GET {{baseUrl}}/patients/6742a1234567890abcdef123
+Authorization: Bearer {{token}}
+
+### Create New Patient
+POST {{baseUrl}}/patients
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Budi Santoso",
+  "dateOfBirth": "1985-05-15",
+  "gender": "male",
+  "address": {
+    "street": "Jl. Merdeka No. 123",
+    "city": "Pontianak",
+    "province": "Kalimantan Barat",
+    "postalCode": "78121",
+    "country": "Indonesia"
+  },
+  "phoneNumber": "+6281234567893",
+  "emergencyContact": {
+    "name": "Siti Santoso",
+    "relationship": "Istri",
+    "phoneNumber": "+6281234567894"
+  },
+  "bloodType": "O+",
+  "allergies": ["Penisilin"],
+  "medicalHistory": ["Diabetes Tipe 2"],
+  "currentMedications": ["Metformin 500mg"]
+}
+
+### Update Patient
+PUT {{baseUrl}}/patients/6742a1234567890abcdef123
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "phoneNumber": "+6281234567999",
+  "currentMedications": ["Metformin 500mg", "Aspirin 100mg"]
+}
+
+### ========================================
+### OBSERVATIONS (Diagnostic Tests)
+### ========================================
+
+### Get All Observations
+GET {{baseUrl}}/observations
+Authorization: Bearer {{token}}
+
+### Get Observations by Patient
+GET {{baseUrl}}/observations?patientId=6742a1234567890abcdef123
+Authorization: Bearer {{token}}
+
+### Get Observations by Status
+GET {{baseUrl}}/observations?status=critical
+Authorization: Bearer {{token}}
+
+### Create Blood Pressure Observation
+POST {{baseUrl}}/observations
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "patientId": "6742a1234567890abcdef123",
+  "testType": "blood-pressure",
+  "measurements": {
+    "bloodPressure": {
+      "systolic": 140,
+      "diastolic": 90
+    }
+  },
+  "deviceInfo": {
+    "deviceId": "BP-001",
+    "deviceType": "Blood Pressure Monitor",
+    "manufacturer": "Omron"
+  }
+}
+
+### Create Comprehensive Observation
+POST {{baseUrl}}/observations
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "patientId": "6742a1234567890abcdef123",
+  "testType": "comprehensive",
+  "measurements": {
+    "bloodPressure": {
+      "systolic": 145,
+      "diastolic": 95
+    },
+    "heartRate": {
+      "value": 88
+    },
+    "spO2": {
+      "value": 96
+    },
+    "glucose": {
+      "value": 125
+    },
+    "ekg": {
+      "rhythm": "regular",
+      "waveformData": [0, 0.1, 0.2, 0.5, 1.0, 0.5, 0.2, 0.1, 0]
+    }
+  },
+  "analysis": {
+    "bloodPressure": {
+      "status": "warning",
+      "message": "Stage 2 Hypertension"
+    },
+    "heartRate": {
+      "status": "normal",
+      "message": "Normal Heart Rate"
+    },
+    "spO2": {
+      "status": "normal",
+      "message": "Normal Oxygen Saturation"
+    },
+    "glucose": {
+      "status": "caution",
+      "message": "Pre-diabetes Range"
+    },
+    "ekg": {
+      "status": "normal",
+      "message": "Normal Sinus Rhythm"
+    }
+  },
+  "overallStatus": "warning",
+  "deviceInfo": {
+    "deviceId": "MULTI-001",
+    "deviceType": "Multi-parameter Monitor",
+    "manufacturer": "Djaja Medical"
+  }
+}
+
+### Add Doctor Review to Observation
+PUT {{baseUrl}}/observations/6742a1234567890abcdef456/review
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "doctorNotes": "Patient shows signs of Stage 2 Hypertension and pre-diabetes. Recommend lifestyle changes and medication. Schedule follow-up in 2 weeks."
+}
+
+### Get Observation Statistics
+GET {{baseUrl}}/observations/stats/summary
+Authorization: Bearer {{token}}
+
+### ========================================
+### FACILITIES
+### ========================================
+
+### Get All Facilities
+GET {{baseUrl}}/facilities
+Authorization: Bearer {{token}}
+
+### Create New Facility
+POST {{baseUrl}}/facilities
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Puskesmas Sungai Ambawang",
+  "type": "puskesmas",
+  "address": {
+    "street": "Jl. Raya Sungai Ambawang",
+    "city": "Kubu Raya",
+    "province": "Kalimantan Barat",
+    "postalCode": "78391",
+    "country": "Indonesia"
+  },
+  "coordinates": {
+    "latitude": -0.3456,
+    "longitude": 109.2345
+  },
+  "phoneNumber": "+62561234567",
+  "email": "puskesmas.ambawang@kemkes.go.id",
+  "is3TArea": true,
+  "devices": [
+    {
+      "deviceId": "BP-001",
+      "deviceType": "Blood Pressure Monitor",
+      "status": "online"
+    },
+    {
+      "deviceId": "GLUCO-001",
+      "deviceType": "Glucometer",
+      "status": "online"
+    }
+  ],
+  "operatingHours": {
+    "monday": "08:00-16:00",
+    "tuesday": "08:00-16:00",
+    "wednesday": "08:00-16:00",
+    "thursday": "08:00-16:00",
+    "friday": "08:00-16:00",
+    "saturday": "08:00-12:00",
+    "sunday": "Closed"
+  },
+  "capacity": {
+    "totalBeds": 10,
+    "availableBeds": 7
+  },
+  "services": ["General Practice", "Maternal Health", "Child Health", "Immunization", "Laboratory"]
+}
+
+### ========================================
+### FHIR (Health Information Exchange)
+### ========================================
+
+### Get Patient in FHIR Format
+GET {{baseUrl}}/fhir/Patient/6742a1234567890abcdef123
+Authorization: Bearer {{token}}
+
+### Get Observation in FHIR Format
+GET {{baseUrl}}/fhir/Observation/6742a1234567890abcdef456
+Authorization: Bearer {{token}}
+
+### ========================================
+### USERS (Admin Only)
+### ========================================
+
+### Get All Users
+GET {{baseUrl}}/users
+Authorization: Bearer {{token}}
+
+### Get User by ID
+GET {{baseUrl}}/users/6742a1234567890abcdef789
+Authorization: Bearer {{token}}
