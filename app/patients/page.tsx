@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Users, FileText, Download, Search } from 'lucide-react';
+import { Users, FileText, Download, Search, AlertCircle, Loader2, RefreshCcw, RefreshCcwIcon } from 'lucide-react';
 
 interface Patient {
   _id: string;
@@ -17,38 +17,63 @@ interface Patient {
   allergies: string[];
   medicalHistory: string[];
   currentMedications: string[];
+  address?: {
+    street: string;
+    city: string;
+    province: string;
+    postalCode: string;
+  };
+  emergencyContact?: {
+    name: string;
+    relationship: string;
+    phoneNumber: string;
+  };
 }
 
 export default function PatientsPage() {
-  const [patients] = useState<Patient[]>([
-    {
-      _id: '1',
-      patientId: 'PT-2025-001',
-      name: 'Budi Santoso',
-      dateOfBirth: '1985-05-15',
-      gender: 'male',
-      phoneNumber: '+6281234567890',
-      bloodType: 'O+',
-      allergies: ['Penisilin'],
-      medicalHistory: ['Diabetes Tipe 2'],
-      currentMedications: ['Metformin 500mg'],
-    },
-    {
-      _id: '2',
-      patientId: 'PT-2025-002',
-      name: 'Siti Aminah',
-      dateOfBirth: '1990-08-22',
-      gender: 'female',
-      phoneNumber: '+6281234567891',
-      bloodType: 'A+',
-      allergies: [],
-      medicalHistory: ['Hypertension'],
-      currentMedications: ['Amlodipine 5mg'],
-    },
-  ]);
-
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+
+  useEffect(() => {
+    fetchPatients();
+  }, []);
+
+  const fetchPatients = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Please log in to view patients');
+        setLoading(false);
+        return;
+      }
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${apiUrl}/api/patients`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch patients');
+      }
+
+      const data = await response.json();
+      setPatients(data.patients || []);
+    } catch (error) {
+      console.error('Fetch patients error:', error);
+      setError(error instanceof Error ? error.message : 'Failed to load patients');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredPatients = patients.filter(
     (patient) =>
@@ -96,19 +121,52 @@ export default function PatientsPage() {
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-primary mb-2">Electronic Medical Records</h1>
-          <p className="text-muted-foreground">Patient demographics and medical history management</p>
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-4xl font-bold text-primary mb-2">Electronic Medical Records</h1>
+            <p className="text-muted-foreground">Patient demographics and medical history management</p>
+          </div>
+          <Button onClick={fetchPatients} variant="outline" disabled={loading}>
+            {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+            Refresh
+          </Button>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-8">
+        {/* Error Alert */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-red-800">{error}</p>
+              <Button 
+                onClick={fetchPatients} 
+                variant="outline" 
+                size="sm" 
+                className="mt-2"
+              >
+                Try Again
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Loading State */}
+        {loading && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            <span className="ml-3 text-muted-foreground">Loading patients...</span>
+          </div>
+        )}
+
+        {!loading && !error && (
+          <div className="grid lg:grid-cols-3 gap-8">
           {/* Patient List */}
           <div className="lg:col-span-1">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Users className="w-5 h-5" />
-                  Patients
+                  Patients ({patients.length})
                 </CardTitle>
                 <CardDescription>Search and select patient</CardDescription>
               </CardHeader>
@@ -125,7 +183,7 @@ export default function PatientsPage() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2 max-h-[600px] overflow-y-auto">
                   {filteredPatients.map((patient) => (
                     <div
                       key={patient._id}
@@ -145,9 +203,9 @@ export default function PatientsPage() {
                   ))}
                 </div>
 
-                {filteredPatients.length === 0 && (
+                {filteredPatients.length === 0 && !loading && (
                   <div className="text-center py-8 text-muted-foreground">
-                    No patients found
+                    {searchTerm ? 'No patients found matching your search' : 'No patients registered yet'}
                   </div>
                 )}
               </CardContent>
@@ -250,7 +308,7 @@ export default function PatientsPage() {
                         {selectedPatient.currentMedications.length > 0 ? (
                           selectedPatient.currentMedications.map((medication, index) => (
                             <div key={index} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                              💊 {medication}
+                              {medication}
                             </div>
                           ))
                         ) : (
@@ -320,6 +378,7 @@ export default function PatientsPage() {
             )}
           </div>
         </div>
+        )}
       </div>
     </div>
   );
