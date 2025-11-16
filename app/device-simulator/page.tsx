@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Activity, Heart, Droplet, Stethoscope, Zap } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Activity, Heart, Droplet, Stethoscope, Zap, Play, Pause, Wifi, WifiOff } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import io, { Socket } from 'socket.io-client';
 
 interface VitalSigns {
@@ -31,6 +32,19 @@ interface DiagnosticResult {
   processedAt: string;
 }
 
+interface DataPoint {
+  timestamp: number;
+  value: number;
+}
+
+interface VitalHistory {
+  bloodPressure: DataPoint[];
+  heartRate: DataPoint[];
+  spO2: DataPoint[];
+  glucose: DataPoint[];
+  ecg: DataPoint[];
+}
+
 export default function DeviceSimulator() {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [vitals, setVitals] = useState<VitalSigns>({
@@ -43,6 +57,17 @@ export default function DeviceSimulator() {
   const [result, setResult] = useState<DiagnosticResult | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamInterval, setStreamInterval] = useState(2000); // ms
+  const [vitalHistory, setVitalHistory] = useState<VitalHistory>({
+    bloodPressure: [],
+    heartRate: [],
+    spO2: [],
+    glucose: [],
+    ecg: [],
+  });
+  const streamIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const ecgIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:5000';
@@ -92,28 +117,160 @@ export default function DeviceSimulator() {
     });
   };
 
-  const sendToCloud = () => {
+  // Generate realistic vital variations (simulates natural body fluctuations)
+  const generateRealisticVitals = (baseVitals: VitalSigns): VitalSigns => {
+    const vary = (value: number, range: number) => {
+      return Math.round(value + (Math.random() - 0.5) * range);
+    };
+
+    return {
+      bloodPressure: {
+        systolic: vary(baseVitals.bloodPressure.systolic, 5),
+        diastolic: vary(baseVitals.bloodPressure.diastolic, 3),
+      },
+      heartRate: vary(baseVitals.heartRate, 3),
+      spO2: Math.min(100, vary(baseVitals.spO2, 1)),
+      glucose: vary(baseVitals.glucose, 5),
+      ekg: baseVitals.ekg,
+    };
+  };
+
+  // Add data point to history (keep last 30 points)
+  const addToHistory = (newVitals: VitalSigns) => {
+    const timestamp = Date.now();
+    const maxPoints = 30;
+
+    setVitalHistory((prev) => ({
+      bloodPressure: [
+        ...prev.bloodPressure.slice(-maxPoints + 1),
+        { timestamp, value: newVitals.bloodPressure.systolic },
+      ],
+      heartRate: [
+        ...prev.heartRate.slice(-maxPoints + 1),
+        { timestamp, value: newVitals.heartRate },
+      ],
+      spO2: [
+        ...prev.spO2.slice(-maxPoints + 1),
+        { timestamp, value: newVitals.spO2 },
+      ],
+      glucose: [
+        ...prev.glucose.slice(-maxPoints + 1),
+        { timestamp, value: newVitals.glucose },
+      ],
+      ecg: prev.ecg, // ECG updated separately at higher frequency
+    }));
+  };
+
+  // Generate ECG waveform data (simulates heart electrical activity)
+  const generateECGPoint = () => {
+    const timestamp = Date.now();
+    // Simulate ECG waveform: P wave, QRS complex, T wave
+    const phase = (timestamp % 1000) / 1000; // 0 to 1 cycle per second
+    let value = 0;
+
+    if (phase < 0.1) {
+      // P wave
+      value = Math.sin(phase * Math.PI * 10) * 0.2;
+    } else if (phase < 0.2) {
+      // PR segment
+      value = 0;
+    } else if (phase < 0.35) {
+      // QRS complex
+      if (phase < 0.25) value = -0.3;
+      else if (phase < 0.3) value = 1.0;
+      else value = -0.2;
+    } else if (phase < 0.5) {
+      // ST segment
+      value = 0;
+    } else if (phase < 0.7) {
+      // T wave
+      value = Math.sin((phase - 0.5) * Math.PI * 5) * 0.3;
+    }
+
+    // Add noise for realism
+    value += (Math.random() - 0.5) * 0.05;
+
+    setVitalHistory((prev) => ({
+      ...prev,
+      ecg: [...prev.ecg.slice(-100), { timestamp, value }],
+    }));
+  };
+
+  const sendToCloud = (vitalData?: VitalSigns) => {
     if (!socket || !isConnected) {
-      alert('Not connected to server. Please ensure the backend is running.');
+      if (!isStreaming) {
+        alert('Not connected to server. Please ensure the backend is running.');
+      }
       return;
     }
 
-    setIsSending(true);
-    setResult(null);
+    const dataToSend = vitalData || vitals;
+    if (!isStreaming) {
+      setIsSending(true);
+      setResult(null);
+    }
 
     const deviceData = {
       deviceId: `SIM-${Date.now()}`,
       patientId: 'demo-patient',
-      bloodPressure: vitals.bloodPressure,
-      heartRate: vitals.heartRate,
-      spO2: vitals.spO2,
-      glucose: vitals.glucose,
-      ekg: vitals.ekg,
+      bloodPressure: dataToSend.bloodPressure,
+      heartRate: dataToSend.heartRate,
+      spO2: dataToSend.spO2,
+      glucose: dataToSend.glucose,
+      ekg: dataToSend.ekg,
       timestamp: new Date().toISOString(),
     };
 
     socket.emit('device-data', deviceData);
+    console.log('📡 Streaming data:', deviceData);
   };
+
+  // Start continuous streaming
+  const startStreaming = () => {
+    if (!isConnected) {
+      alert('Not connected to server. Please ensure the backend is running.');
+      return;
+    }
+
+    setIsStreaming(true);
+    console.log('▶️ Starting continuous stream...');
+
+    // Stream vital signs at specified interval
+    streamIntervalRef.current = setInterval(() => {
+      const newVitals = generateRealisticVitals(vitals);
+      setVitals(newVitals);
+      addToHistory(newVitals);
+      sendToCloud(newVitals);
+    }, streamInterval);
+
+    // Stream ECG waveform at higher frequency (60 Hz for smooth waveform)
+    ecgIntervalRef.current = setInterval(() => {
+      generateECGPoint();
+    }, 16); // ~60 FPS
+  };
+
+  // Stop streaming
+  const stopStreaming = () => {
+    setIsStreaming(false);
+    console.log('⏸️ Stopping stream...');
+
+    if (streamIntervalRef.current) {
+      clearInterval(streamIntervalRef.current);
+      streamIntervalRef.current = null;
+    }
+
+    if (ecgIntervalRef.current) {
+      clearInterval(ecgIntervalRef.current);
+      ecgIntervalRef.current = null;
+    }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopStreaming();
+    };
+  }, []);
 
   const getStatusColor = (status?: string) => {
     switch (status) {
@@ -276,22 +433,283 @@ export default function DeviceSimulator() {
               </CardContent>
             </Card>
 
+            {/* Streaming Controls */}
+            <Card className="border-2 border-primary/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Wifi className="w-5 h-5" />
+                  Streaming Controls
+                </CardTitle>
+                <CardDescription>Simulate continuous IoT device data stream</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium">Stream Interval (ms)</label>
+                  <Input
+                    type="number"
+                    value={streamInterval}
+                    onChange={(e) => setStreamInterval(Number(e.target.value))}
+                    min="500"
+                    max="10000"
+                    step="500"
+                    disabled={isStreaming}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Data sent every {streamInterval / 1000} seconds
+                  </p>
+                </div>
+
+                <div className="flex gap-2">
+                  {!isStreaming ? (
+                    <Button
+                      onClick={startStreaming}
+                      disabled={!isConnected}
+                      className="flex-1"
+                    >
+                      <Play className="w-4 h-4 mr-2" />
+                      Start Streaming
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={stopStreaming}
+                      variant="destructive"
+                      className="flex-1"
+                    >
+                      <Pause className="w-4 h-4 mr-2" />
+                      Stop Streaming
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
             <div className="flex gap-4">
-              <Button onClick={generateRandomVitals} variant="outline" className="flex-1">
+              <Button onClick={generateRandomVitals} variant="outline" className="flex-1" disabled={isStreaming}>
                 Generate Random
               </Button>
               <Button
-                onClick={sendToCloud}
-                disabled={!isConnected || isSending}
+                onClick={() => sendToCloud()}
+                disabled={!isConnected || isSending || isStreaming}
                 className="flex-1"
               >
-                {isSending ? 'Processing...' : 'Send to Cloud'}
+                {isSending ? 'Processing...' : 'Send Single'}
               </Button>
             </div>
           </div>
 
-          {/* Results Display */}
-          <div>
+          {/* Real-Time Dashboard */}
+          <div className="space-y-6">
+            {/* Live Vitals Display */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-5 h-5" />
+                    Live Vitals Monitor
+                  </div>
+                  {isStreaming && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                      <span className="text-red-600 font-medium">STREAMING</span>
+                    </div>
+                  )}
+                </CardTitle>
+                <CardDescription>Real-time vital signs display</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <div className="text-sm text-blue-600 font-medium mb-1">Blood Pressure</div>
+                    <div className="text-3xl font-bold text-blue-900">
+                      {vitals.bloodPressure.systolic}/{vitals.bloodPressure.diastolic}
+                    </div>
+                    <div className="text-xs text-blue-600 mt-1">mmHg</div>
+                  </div>
+
+                  <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+                    <div className="text-sm text-red-600 font-medium mb-1">Heart Rate</div>
+                    <div className="text-3xl font-bold text-red-900">{vitals.heartRate}</div>
+                    <div className="text-xs text-red-600 mt-1">bpm</div>
+                  </div>
+
+                  <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                    <div className="text-sm text-green-600 font-medium mb-1">SpO2</div>
+                    <div className="text-3xl font-bold text-green-900">{vitals.spO2}%</div>
+                    <div className="text-xs text-green-600 mt-1">Oxygen Saturation</div>
+                  </div>
+
+                  <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
+                    <div className="text-sm text-purple-600 font-medium mb-1">Glucose</div>
+                    <div className="text-3xl font-bold text-purple-900">{vitals.glucose}</div>
+                    <div className="text-xs text-purple-600 mt-1">mg/dL</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* ECG Waveform */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Zap className="w-5 h-5" />
+                  ECG Waveform
+                </CardTitle>
+                <CardDescription>Real-time electrocardiogram</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="h-48 bg-gray-900 rounded-lg p-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={vitalHistory.ecg}>
+                      <defs>
+                        <linearGradient id="ecgGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                      <XAxis
+                        dataKey="timestamp"
+                        stroke="#9ca3af"
+                        tick={false}
+                        axisLine={{ stroke: '#374151' }}
+                      />
+                      <YAxis
+                        stroke="#9ca3af"
+                        domain={[-0.5, 1.2]}
+                        tick={{ fill: '#9ca3af', fontSize: 12 }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="value"
+                        stroke="#10b981"
+                        strokeWidth={2}
+                        fill="url(#ecgGradient)"
+                        isAnimationActive={false}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="mt-2 text-xs text-muted-foreground text-center">
+                  Rhythm: {vitals.ekg.rhythm.toUpperCase()} | Rate: {vitals.heartRate} BPM
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Vital Trends Charts */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Heart className="w-5 h-5" />
+                  Vital Trends
+                </CardTitle>
+                <CardDescription>Historical data from streaming session</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Heart Rate Chart */}
+                <div>
+                  <h4 className="text-sm font-medium mb-2">Heart Rate</h4>
+                  <div className="h-32">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={vitalHistory.heartRate}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis
+                          dataKey="timestamp"
+                          tick={false}
+                          stroke="#9ca3af"
+                        />
+                        <YAxis
+                          domain={[40, 150]}
+                          stroke="#9ca3af"
+                          tick={{ fill: '#6b7280', fontSize: 11 }}
+                        />
+                        <Tooltip
+                          labelFormatter={(value) => new Date(value).toLocaleTimeString()}
+                          formatter={(value: number) => [`${value} bpm`, 'HR']}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="value"
+                          stroke="#ef4444"
+                          strokeWidth={2}
+                          dot={false}
+                          isAnimationActive={false}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* SpO2 Chart */}
+                <div>
+                  <h4 className="text-sm font-medium mb-2">Oxygen Saturation (SpO2)</h4>
+                  <div className="h-32">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={vitalHistory.spO2}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis
+                          dataKey="timestamp"
+                          tick={false}
+                          stroke="#9ca3af"
+                        />
+                        <YAxis
+                          domain={[85, 100]}
+                          stroke="#9ca3af"
+                          tick={{ fill: '#6b7280', fontSize: 11 }}
+                        />
+                        <Tooltip
+                          labelFormatter={(value) => new Date(value).toLocaleTimeString()}
+                          formatter={(value: number) => [`${value}%`, 'SpO2']}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="value"
+                          stroke="#10b981"
+                          strokeWidth={2}
+                          dot={false}
+                          isAnimationActive={false}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Blood Pressure Chart */}
+                <div>
+                  <h4 className="text-sm font-medium mb-2">Blood Pressure (Systolic)</h4>
+                  <div className="h-32">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={vitalHistory.bloodPressure}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis
+                          dataKey="timestamp"
+                          tick={false}
+                          stroke="#9ca3af"
+                        />
+                        <YAxis
+                          domain={[80, 180]}
+                          stroke="#9ca3af"
+                          tick={{ fill: '#6b7280', fontSize: 11 }}
+                        />
+                        <Tooltip
+                          labelFormatter={(value) => new Date(value).toLocaleTimeString()}
+                          formatter={(value: number) => [`${value} mmHg`, 'Systolic']}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="value"
+                          stroke="#3b82f6"
+                          strokeWidth={2}
+                          dot={false}
+                          isAnimationActive={false}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* AI Diagnostic Analysis */}
             <Card className="sticky top-8">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
