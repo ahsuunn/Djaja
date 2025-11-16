@@ -11,6 +11,7 @@ export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userName, setUserName] = useState('');
+  const [userRole, setUserRole] = useState('');
   const router = useRouter();
   const pathname = usePathname();
 
@@ -25,12 +26,14 @@ export default function Navbar() {
         try {
           const userData = JSON.parse(user);
           setUserName(userData.name);
+          setUserRole(userData.role);
         } catch (error) {
           console.error('Error parsing user data:', error);
         }
       } else {
         setIsLoggedIn(false);
         setUserName('');
+        setUserRole('');
       }
     };
 
@@ -52,6 +55,7 @@ export default function Navbar() {
     localStorage.removeItem('user');
     setIsLoggedIn(false);
     setUserName('');
+    setUserRole('');
     window.dispatchEvent(new Event('userLoggedOut'));
     router.push('/');
   };
@@ -81,12 +85,16 @@ export default function Navbar() {
             <Link href="/">
               <Button variant="ghost" className={pathname === '/' ? 'bg-primary/10 text-primary' : ''}>Home</Button>
             </Link>
-            <Link href="/device-simulator">
-              <Button variant="ghost" className={pathname === '/device-simulator' ? 'bg-primary/10 text-primary' : ''}>Device Simulator</Button>
-            </Link>
-            <Link href="/dashboard">
-              <Button variant="ghost" className={pathname === '/dashboard' ? 'bg-primary/10 text-primary' : ''}>Dashboard</Button>
-            </Link>
+            {userRole !== 'doctor' && (
+              <Link href="/device-simulator">
+                <Button variant="ghost" className={pathname === '/device-simulator' ? 'bg-primary/10 text-primary' : ''}>Device Simulator</Button>
+              </Link>
+            )}
+            {userRole !== 'nakes' && (
+              <Link href="/dashboard">
+                <Button variant="ghost" className={pathname === '/dashboard' ? 'bg-primary/10 text-primary' : ''}>Dashboard</Button>
+              </Link>
+            )}
             <Link href="/patients">
               <Button variant="ghost" className={pathname === '/patients' ? 'bg-primary/10 text-primary' : ''}>Medical Records</Button>
             </Link>
@@ -139,16 +147,20 @@ export default function Navbar() {
                 Home
               </Button>
             </Link>
-            <Link href="/device-simulator" onClick={() => setIsOpen(false)}>
-              <Button variant="ghost" className={`w-full justify-start ${pathname === '/device-simulator' ? 'bg-primary/10 text-primary' : ''}`}>
-                Device Simulator
-              </Button>
-            </Link>
-            <Link href="/dashboard" onClick={() => setIsOpen(false)}>
-              <Button variant="ghost" className={`w-full justify-start ${pathname === '/dashboard' ? 'bg-primary/10 text-primary' : ''}`}>
-                Dashboard
-              </Button>
-            </Link>
+            {userRole !== 'doctor' && (
+              <Link href="/device-simulator" onClick={() => setIsOpen(false)}>
+                <Button variant="ghost" className={`w-full justify-start ${pathname === '/device-simulator' ? 'bg-primary/10 text-primary' : ''}`}>
+                  Device Simulator
+                </Button>
+              </Link>
+            )}
+            {userRole !== 'nakes' && (
+              <Link href="/dashboard" onClick={() => setIsOpen(false)}>
+                <Button variant="ghost" className={`w-full justify-start ${pathname === '/dashboard' ? 'bg-primary/10 text-primary' : ''}`}>
+                  Dashboard
+                </Button>
+              </Link>
+            )}
             <Link href="/patients" onClick={() => setIsOpen(false)}>
               <Button variant="ghost" className={`w-full justify-start ${pathname === '/patients' ? 'bg-primary/10 text-primary' : ''}`}>
                 Medical Records
