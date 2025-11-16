@@ -99,22 +99,26 @@ export default function Navbar() {
             <Link href="/">
               <Button variant="ghost" className={pathname === '/' ? 'bg-primary/10 text-primary' : ''}>Home</Button>
             </Link>
-            {userRole !== 'doctor' && (
-              <Link href="/device-simulator">
-                <Button variant="ghost" className={pathname === '/device-simulator' ? 'bg-primary/10 text-primary' : ''}>Device Simulator</Button>
-              </Link>
+            {isLoggedIn && (
+              <>
+                {userRole !== 'doctor' && (
+                  <Link href="/device-simulator">
+                    <Button variant="ghost" className={pathname === '/device-simulator' ? 'bg-primary/10 text-primary' : ''}>Device Simulator</Button>
+                  </Link>
+                )}
+                {userRole !== 'nakes' && (
+                  <Link href="/dashboard">
+                    <Button variant="ghost" className={pathname === '/dashboard' ? 'bg-primary/10 text-primary' : ''}>Dashboard</Button>
+                  </Link>
+                )}
+                <Link href="/patients">
+                  <Button variant="ghost" className={pathname === '/patients' ? 'bg-primary/10 text-primary' : ''}>Medical Records</Button>
+                </Link>
+                <Link href="/telemedicine">
+                  <Button variant="ghost" className={pathname === '/telemedicine' ? 'bg-primary/10 text-primary' : ''}>Telemedicine</Button>
+                </Link>
+              </>
             )}
-            {userRole !== 'nakes' && (
-              <Link href="/dashboard">
-                <Button variant="ghost" className={pathname === '/dashboard' ? 'bg-primary/10 text-primary' : ''}>Dashboard</Button>
-              </Link>
-            )}
-            <Link href="/patients">
-              <Button variant="ghost" className={pathname === '/patients' ? 'bg-primary/10 text-primary' : ''}>Medical Records</Button>
-            </Link>
-            <Link href="/telemedicine">
-              <Button variant="ghost" className={pathname === '/telemedicine' ? 'bg-primary/10 text-primary' : ''}>Telemedicine</Button>
-            </Link>
 
             {/* Auth Buttons */}
             {isLoggedIn ? (
@@ -169,30 +173,34 @@ export default function Navbar() {
                 Home
               </Button>
             </Link>
-            {userRole !== 'doctor' && (
-              <Link href="/device-simulator" onClick={() => setIsOpen(false)}>
-                <Button variant="ghost" className={`w-full justify-start ${pathname === '/device-simulator' ? 'bg-primary/10 text-primary' : ''}`}>
-                  Device Simulator
-                </Button>
-              </Link>
+            {isLoggedIn && (
+              <>
+                {userRole !== 'doctor' && (
+                  <Link href="/device-simulator" onClick={() => setIsOpen(false)}>
+                    <Button variant="ghost" className={`w-full justify-start ${pathname === '/device-simulator' ? 'bg-primary/10 text-primary' : ''}`}>
+                      Device Simulator
+                    </Button>
+                  </Link>
+                )}
+                {userRole !== 'nakes' && (
+                  <Link href="/dashboard" onClick={() => setIsOpen(false)}>
+                    <Button variant="ghost" className={`w-full justify-start ${pathname === '/dashboard' ? 'bg-primary/10 text-primary' : ''}`}>
+                      Dashboard
+                    </Button>
+                  </Link>
+                )}
+                <Link href="/patients" onClick={() => setIsOpen(false)}>
+                  <Button variant="ghost" className={`w-full justify-start ${pathname === '/patients' ? 'bg-primary/10 text-primary' : ''}`}>
+                    Medical Records
+                  </Button>
+                </Link>
+                <Link href="/telemedicine" onClick={() => setIsOpen(false)}>
+                  <Button variant="ghost" className={`w-full justify-start ${pathname === '/telemedicine' ? 'bg-primary/10 text-primary' : ''}`}>
+                    Telemedicine
+                  </Button>
+                </Link>
+              </>
             )}
-            {userRole !== 'nakes' && (
-              <Link href="/dashboard" onClick={() => setIsOpen(false)}>
-                <Button variant="ghost" className={`w-full justify-start ${pathname === '/dashboard' ? 'bg-primary/10 text-primary' : ''}`}>
-                  Dashboard
-                </Button>
-              </Link>
-            )}
-            <Link href="/patients" onClick={() => setIsOpen(false)}>
-              <Button variant="ghost" className={`w-full justify-start ${pathname === '/patients' ? 'bg-primary/10 text-primary' : ''}`}>
-                Medical Records
-              </Button>
-            </Link>
-            <Link href="/telemedicine" onClick={() => setIsOpen(false)}>
-              <Button variant="ghost" className={`w-full justify-start ${pathname === '/telemedicine' ? 'bg-primary/10 text-primary' : ''}`}>
-                Telemedicine
-              </Button>
-            </Link>
 
             {/* Mobile Auth */}
             <div className="pt-4 border-t border-gray-200 mt-4">
