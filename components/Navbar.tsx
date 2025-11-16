@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Activity, Menu, X, User, LogOut } from 'lucide-react';
+import { Activity, Menu, X, User, LogOut, MapPin } from 'lucide-react';
 import Image from 'next/image';
 
 export default function Navbar() {
@@ -12,8 +12,19 @@ export default function Navbar() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userName, setUserName] = useState('');
   const [userRole, setUserRole] = useState('');
+  const [userLocation, setUserLocation] = useState('');
   const router = useRouter();
   const pathname = usePathname();
+
+  // Mock location data based on role
+  const getLocationByRole = (role: string) => {
+    if (role === 'nakes') {
+      return 'Puskesmas Sungai Raya, Kalimantan Barat';
+    } else if (role === 'doctor') {
+      return 'RSUD Dr. Soetomo, Surabaya';
+    }
+    return '';
+  };
 
   useEffect(() => {
     // Check if user is logged in
@@ -27,6 +38,7 @@ export default function Navbar() {
           const userData = JSON.parse(user);
           setUserName(userData.name);
           setUserRole(userData.role);
+          setUserLocation(getLocationByRole(userData.role));
         } catch (error) {
           console.error('Error parsing user data:', error);
         }
@@ -34,6 +46,7 @@ export default function Navbar() {
         setIsLoggedIn(false);
         setUserName('');
         setUserRole('');
+        setUserLocation('');
       }
     };
 
@@ -56,6 +69,7 @@ export default function Navbar() {
     setIsLoggedIn(false);
     setUserName('');
     setUserRole('');
+    setUserLocation('');
     window.dispatchEvent(new Event('userLoggedOut'));
     router.push('/');
   };
@@ -105,6 +119,14 @@ export default function Navbar() {
             {/* Auth Buttons */}
             {isLoggedIn ? (
               <div className="flex items-center gap-2 ml-4">
+                {(userRole === 'nakes' || userRole === 'doctor') && userLocation && (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-green-50 border border-green-200 rounded-lg max-w-xs">
+                    <MapPin className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+                    <span className="text-xs font-medium text-green-700 truncate" title={userLocation}>
+                      {userLocation}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 rounded-lg">
                   <User className="w-4 h-4 text-primary" />
                   <span className="text-sm font-medium">{userName}</span>
@@ -176,6 +198,14 @@ export default function Navbar() {
             <div className="pt-4 border-t border-gray-200 mt-4">
               {isLoggedIn ? (
                 <div className="space-y-2">
+                  {(userRole === 'nakes' || userRole === 'doctor') && userLocation && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
+                      <MapPin className="w-4 h-4 text-green-600 flex-shrink-0" />
+                      <span className="text-sm font-medium text-green-700">
+                        {userLocation}
+                      </span>
+                    </div>
+                  )}
                   <div className="px-3 py-2 bg-primary/10 rounded-lg flex items-center gap-2">
                     <User className="w-4 h-4 text-primary" />
                     <span className="text-sm font-medium">{userName}</span>
