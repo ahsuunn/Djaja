@@ -3,10 +3,13 @@
 
 ### Variables
 @baseUrl = http://localhost:5000/api
-@token = your-jwt-token-here
+# Doctor Token
+# @token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTE5ODQ0NzQwODIxMWJlODExZjRhNWYiLCJyb2xlIjoiZG9jdG9yIiwiaWF0IjoxNzYzMjgwNDM1LCJleHAiOjE3NjM4ODUyMzV9.ZBB4UZbPrGZAP9wtKpnS02veR3w6qtHWA-qFRdMQNVA
 
+# Admin Token
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTE5ODQ2ZDQwODIxMWJlODExZjRhNjkiLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NjMyODMzMzEsImV4cCI6MTc2Mzg4ODEzMX0.Z28dsaKfEYb-Cd-_uV3cuKjUEVcTpum8MYzTNpCCYS4
 ### Health Check
-GET {{baseUrl}}/../health
+GET {{baseUrl}}/health
 
 ### ========================================
 ### AUTHENTICATION
@@ -50,12 +53,21 @@ Content-Type: application/json
   "phoneNumber": "+6281234567892"
 }
 
-### Login
+### Login as doctor
+# POST {{baseUrl}}/auth/login
+# Content-Type: application/json
+
+# {
+#   "email": "doctor@djaja.com",
+#   "password": "password123"
+# }
+
+# Login as admin 
 POST {{baseUrl}}/auth/login
 Content-Type: application/json
 
 {
-  "email": "doctor@djaja.com",
+  "email": "admin@djaja.com",
   "password": "password123"
 }
 
@@ -104,7 +116,7 @@ Content-Type: application/json
 }
 
 ### Update Patient
-PUT {{baseUrl}}/patients/6742a1234567890abcdef123
+PUT {{baseUrl}}/patients/69198743408211be811f4a7e
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
@@ -122,7 +134,7 @@ GET {{baseUrl}}/observations
 Authorization: Bearer {{token}}
 
 ### Get Observations by Patient
-GET {{baseUrl}}/observations?patientId=6742a1234567890abcdef123
+GET {{baseUrl}}/observations?patientId=69198743408211be811f4a7e
 Authorization: Bearer {{token}}
 
 ### Get Observations by Status
@@ -135,7 +147,7 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "patientId": "6742a1234567890abcdef123",
+  "patientId": "69198743408211be811f4a7e",
   "testType": "blood-pressure",
   "measurements": {
     "bloodPressure": {
@@ -156,7 +168,7 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "patientId": "6742a1234567890abcdef123",
+  "patientId": "69198743408211be811f4a7e",
   "testType": "comprehensive",
   "measurements": {
     "bloodPressure": {
@@ -208,7 +220,7 @@ Content-Type: application/json
 }
 
 ### Add Doctor Review to Observation
-PUT {{baseUrl}}/observations/6742a1234567890abcdef456/review
+PUT {{baseUrl}}/observations/6919884d408211be811f4a8f/review
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
@@ -283,11 +295,11 @@ Content-Type: application/json
 ### ========================================
 
 ### Get Patient in FHIR Format
-GET {{baseUrl}}/fhir/Patient/6742a1234567890abcdef123
+GET {{baseUrl}}/fhir/Patient/69198743408211be811f4a7e
 Authorization: Bearer {{token}}
 
 ### Get Observation in FHIR Format
-GET {{baseUrl}}/fhir/Observation/6742a1234567890abcdef456
+GET {{baseUrl}}/fhir/Observation/691988a2408211be811f4a94
 Authorization: Bearer {{token}}
 
 ### ========================================
@@ -299,5 +311,5 @@ GET {{baseUrl}}/users
 Authorization: Bearer {{token}}
 
 ### Get User by ID
-GET {{baseUrl}}/users/6742a1234567890abcdef789
+GET {{baseUrl}}/users/69198447408211be811f4a5f
 Authorization: Bearer {{token}}
