@@ -1,13 +1,14 @@
-const express = require('express');
-const router = express.Router();
-const { auth, authorize } = require('../middleware/auth');
-const Patient = require('../models/Patient');
-const AuditLog = require('../models/AuditLog');
+import express, { Request, Response, Router } from 'express';
+import { auth, authorize } from '../middleware/auth';
+import Patient from '../models/Patient';
+import AuditLog from '../models/AuditLog';
+
+const router: Router = express.Router();
 
 // @route   GET /api/patients
 // @desc    Get all patients
 // @access  Private (doctor, nakes, admin)
-router.get('/', auth, authorize('doctor', 'nakes', 'admin'), async (req, res) => {
+router.get('/', auth, authorize('doctor', 'nakes', 'admin'), async (req: Request, res: Response): Promise<void> => {
   try {
     const patients = await Patient.find({ isActive: true })
       .populate('facilityId')
@@ -24,14 +25,15 @@ router.get('/', auth, authorize('doctor', 'nakes', 'admin'), async (req, res) =>
 // @route   GET /api/patients/:id
 // @desc    Get patient by ID
 // @access  Private
-router.get('/:id', auth, async (req, res) => {
+router.get('/:id', auth, async (req: Request, res: Response): Promise<void> => {
   try {
     const patient = await Patient.findById(req.params.id)
       .populate('facilityId')
       .populate('registeredBy', 'name email role');
 
     if (!patient) {
-      return res.status(404).json({ message: 'Patient not found' });
+      res.status(404).json({ message: 'Patient not found' });
+      return;
     }
 
     res.json({ patient });
@@ -44,11 +46,11 @@ router.get('/:id', auth, async (req, res) => {
 // @route   POST /api/patients
 // @desc    Create new patient
 // @access  Private (nakes, admin)
-router.post('/', auth, authorize('nakes', 'admin', 'doctor'), async (req, res) => {
+router.post('/', auth, authorize('nakes', 'admin', 'doctor'), async (req: Request, res: Response): Promise<void> => {
   try {
     const patientData = {
       ...req.body,
-      registeredBy: req.user._id,
+      registeredBy: req.user!._id,
       patientId: `PT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     };
 
@@ -57,7 +59,7 @@ router.post('/', auth, authorize('nakes', 'admin', 'doctor'), async (req, res) =
 
     // Create audit log
     await AuditLog.create({
-      userId: req.user._id,
+      userId: req.user!._id,
       action: 'PATIENT_CREATED',
       resourceType: 'Patient',
       resourceId: patient._id,
@@ -76,7 +78,7 @@ router.post('/', auth, authorize('nakes', 'admin', 'doctor'), async (req, res) =
 // @route   PUT /api/patients/:id
 // @desc    Update patient
 // @access  Private (nakes, admin, doctor)
-router.put('/:id', auth, authorize('nakes', 'admin', 'doctor'), async (req, res) => {
+router.put('/:id', auth, authorize('nakes', 'admin', 'doctor'), async (req: Request, res: Response): Promise<void> => {
   try {
     const patient = await Patient.findByIdAndUpdate(
       req.params.id,
@@ -85,12 +87,13 @@ router.put('/:id', auth, authorize('nakes', 'admin', 'doctor'), async (req, res)
     );
 
     if (!patient) {
-      return res.status(404).json({ message: 'Patient not found' });
+      res.status(404).json({ message: 'Patient not found' });
+      return;
     }
 
     // Create audit log
     await AuditLog.create({
-      userId: req.user._id,
+      userId: req.user!._id,
       action: 'PATIENT_UPDATED',
       resourceType: 'Patient',
       resourceId: patient._id,
@@ -105,4 +108,4 @@ router.put('/:id', auth, authorize('nakes', 'admin', 'doctor'), async (req, res)
   }
 });
 
-module.exports = router;
+export default router;

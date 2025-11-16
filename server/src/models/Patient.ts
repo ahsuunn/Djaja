@@ -1,6 +1,35 @@
-const mongoose = require('mongoose');
+import mongoose, { Document, Schema } from 'mongoose';
 
-const PatientSchema = new mongoose.Schema({
+export interface IPatient extends Document {
+  patientId: string;
+  name: string;
+  dateOfBirth: Date;
+  gender: 'male' | 'female' | 'other';
+  address?: {
+    street?: string;
+    city?: string;
+    province?: string;
+    postalCode?: string;
+    country: string;
+  };
+  phoneNumber: string;
+  emergencyContact?: {
+    name?: string;
+    relationship?: string;
+    phoneNumber?: string;
+  };
+  bloodType?: 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | 'Unknown';
+  allergies?: string[];
+  medicalHistory?: string[];
+  currentMedications?: string[];
+  facilityId?: mongoose.Types.ObjectId;
+  registeredBy?: mongoose.Types.ObjectId;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const PatientSchema = new Schema<IPatient>({
   patientId: {
     type: String,
     required: true,
@@ -43,11 +72,11 @@ const PatientSchema = new mongoose.Schema({
   medicalHistory: [String],
   currentMedications: [String],
   facilityId: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: Schema.Types.ObjectId,
     ref: 'Facility',
   },
   registeredBy: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: Schema.Types.ObjectId,
     ref: 'User',
   },
   isActive: {
@@ -64,4 +93,4 @@ const PatientSchema = new mongoose.Schema({
   },
 });
 
-module.exports = mongoose.model('Patient', PatientSchema);
+export default mongoose.model<IPatient>('Patient', PatientSchema);

@@ -1,18 +1,18 @@
-const express = require('express');
-const router = express.Router();
-const { auth, authorize } = require('../middleware/auth');
-const Observation = require('../models/Observation');
-const Patient = require('../models/Patient');
-const AuditLog = require('../models/AuditLog');
+import express, { Request, Response, Router } from 'express';
+import { auth, authorize } from '../middleware/auth';
+import Observation from '../models/Observation';
+import AuditLog from '../models/AuditLog';
+
+const router: Router = express.Router();
 
 // @route   GET /api/observations
 // @desc    Get all observations
 // @access  Private
-router.get('/', auth, async (req, res) => {
+router.get('/', auth, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { patientId, status, limit = 50 } = req.query;
+    const { patientId, status, limit = '50' } = req.query;
     
-    const filter = {};
+    const filter: any = {};
     if (patientId) filter.patientId = patientId;
     if (status) filter.overallStatus = status;
 
@@ -21,7 +21,7 @@ router.get('/', auth, async (req, res) => {
       .populate('performedBy', 'name role')
       .populate('reviewedBy', 'name role')
       .sort({ createdAt: -1 })
-      .limit(parseInt(limit));
+      .limit(parseInt(limit as string));
 
     res.json({ observations });
   } catch (error) {
@@ -33,13 +33,13 @@ router.get('/', auth, async (req, res) => {
 // @route   POST /api/observations
 // @desc    Create new observation
 // @access  Private (nakes, doctor)
-router.post('/', auth, authorize('nakes', 'doctor'), async (req, res) => {
+router.post('/', auth, authorize('nakes', 'doctor'), async (req: Request, res: Response): Promise<void> => {
   try {
     const observationData = {
       ...req.body,
       observationId: `OBS-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      performedBy: req.user._id,
-      facilityId: req.user.facilityId,
+      performedBy: req.user!._id,
+      facilityId: req.user!.facilityId,
     };
 
     const observation = new Observation(observationData);
@@ -47,7 +47,7 @@ router.post('/', auth, authorize('nakes', 'doctor'), async (req, res) => {
 
     // Create audit log
     await AuditLog.create({
-      userId: req.user._id,
+      userId: req.user!._id,
       action: 'OBSERVATION_CREATED',
       resourceType: 'Observation',
       resourceId: observation._id,
@@ -73,7 +73,7 @@ router.post('/', auth, authorize('nakes', 'doctor'), async (req, res) => {
 // @route   PUT /api/observations/:id/review
 // @desc    Add doctor review to observation
 // @access  Private (doctor)
-router.put('/:id/review', auth, authorize('doctor'), async (req, res) => {
+router.put('/:id/review', auth, authorize('doctor'), async (req: Request, res: Response): Promise<void> => {
   try {
     const { doctorNotes } = req.body;
 
@@ -81,7 +81,7 @@ router.put('/:id/review', auth, authorize('doctor'), async (req, res) => {
       req.params.id,
       {
         doctorNotes,
-        reviewedBy: req.user._id,
+        reviewedBy: req.user!._id,
         reviewedAt: Date.now(),
         updatedAt: Date.now(),
       },
@@ -89,12 +89,13 @@ router.put('/:id/review', auth, authorize('doctor'), async (req, res) => {
     ).populate('patientId').populate('performedBy').populate('reviewedBy');
 
     if (!observation) {
-      return res.status(404).json({ message: 'Observation not found' });
+      res.status(404).json({ message: 'Observation not found' });
+      return;
     }
 
     // Create audit log
     await AuditLog.create({
-      userId: req.user._id,
+      userId: req.user!._id,
       action: 'OBSERVATION_REVIEWED',
       resourceType: 'Observation',
       resourceId: observation._id,
@@ -112,7 +113,7 @@ router.put('/:id/review', auth, authorize('doctor'), async (req, res) => {
 // @route   GET /api/observations/stats
 // @desc    Get observation statistics
 // @access  Private
-router.get('/stats/summary', auth, async (req, res) => {
+router.get('/stats/summary', auth, async (req: Request, res: Response): Promise<void> => {
   try {
     const totalTests = await Observation.countDocuments();
     const criticalTests = await Observation.countDocuments({ overallStatus: 'critical' });
@@ -140,4 +141,4 @@ router.get('/stats/summary', auth, async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

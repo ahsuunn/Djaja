@@ -1,12 +1,13 @@
-const express = require('express');
-const router = express.Router();
-const { auth, authorize } = require('../middleware/auth');
-const Facility = require('../models/Facility');
+import express, { Request, Response, Router } from 'express';
+import { auth, authorize } from '../middleware/auth';
+import Facility from '../models/Facility';
+
+const router: Router = express.Router();
 
 // @route   GET /api/facilities
 // @desc    Get all facilities
 // @access  Private
-router.get('/', auth, async (req, res) => {
+router.get('/', auth, async (req: Request, res: Response): Promise<void> => {
   try {
     const facilities = await Facility.find({ isActive: true }).sort({ name: 1 });
     res.json({ facilities });
@@ -19,12 +20,13 @@ router.get('/', auth, async (req, res) => {
 // @route   GET /api/facilities/:id
 // @desc    Get facility by ID
 // @access  Private
-router.get('/:id', auth, async (req, res) => {
+router.get('/:id', auth, async (req: Request, res: Response): Promise<void> => {
   try {
     const facility = await Facility.findById(req.params.id);
     
     if (!facility) {
-      return res.status(404).json({ message: 'Facility not found' });
+      res.status(404).json({ message: 'Facility not found' });
+      return;
     }
 
     res.json({ facility });
@@ -37,7 +39,7 @@ router.get('/:id', auth, async (req, res) => {
 // @route   POST /api/facilities
 // @desc    Create new facility
 // @access  Private (admin)
-router.post('/', auth, authorize('admin'), async (req, res) => {
+router.post('/', auth, authorize('admin'), async (req: Request, res: Response): Promise<void> => {
   try {
     const facilityData = {
       ...req.body,
@@ -54,4 +56,4 @@ router.post('/', auth, authorize('admin'), async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

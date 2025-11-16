@@ -1,10 +1,11 @@
-const express = require('express');
-const router = express.Router();
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const { body, validationResult } = require('express-validator');
-const User = require('../models/User');
-const AuditLog = require('../models/AuditLog');
+import express, { Request, Response, Router } from 'express';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import { body, validationResult } from 'express-validator';
+import User from '../models/User';
+import AuditLog from '../models/AuditLog';
+
+const router: Router = express.Router();
 
 // @route   POST /api/auth/register
 // @desc    Register a new user
@@ -17,11 +18,12 @@ router.post(
     body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
     body('role').isIn(['admin', 'doctor', 'nakes', 'patient']).withMessage('Invalid role'),
   ],
-  async (req, res) => {
+  async (req: Request, res: Response): Promise<void> => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
+        res.status(400).json({ errors: errors.array() });
+        return;
       }
 
       const { name, email, password, role, facilityId, licenseNumber, specialization, phoneNumber } = req.body;
@@ -29,7 +31,8 @@ router.post(
       // Check if user already exists
       let user = await User.findOne({ email });
       if (user) {
-        return res.status(400).json({ message: 'User already exists with this email' });
+        res.status(400).json({ message: 'User already exists with this email' });
+        return;
       }
 
       // Hash password
@@ -61,10 +64,15 @@ router.post(
       });
 
       // Generate JWT token
+      const jwtSecret = process.env.JWT_SECRET;
+      if (!jwtSecret) {
+        throw new Error('JWT_SECRET is not defined');
+      }
+
       const token = jwt.sign(
         { userId: user._id, role: user.role },
-        process.env.JWT_SECRET,
-        { expiresIn: process.env.JWT_EXPIRE || '7d' }
+        jwtSecret,
+        { expiresIn: process.env.JWT_EXPIRE || '7d' } as jwt.SignOptions
       );
 
       res.status(201).json({
@@ -93,11 +101,12 @@ router.post(
     body('email').isEmail().withMessage('Valid email is required'),
     body('password').notEmpty().withMessage('Password is required'),
   ],
-  async (req, res) => {
+  async (req: Request, res: Response): Promise<void> => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
+        res.status(400).json({ errors: errors.array() });
+        return;
       }
 
       const { email, password } = req.body;
@@ -105,18 +114,21 @@ router.post(
       // Check if user exists
       const user = await User.findOne({ email });
       if (!user) {
-        return res.status(401).json({ message: 'Invalid credentials' });
+        res.status(401).json({ message: 'Invalid credentials' });
+        return;
       }
 
       // Check if user is active
       if (!user.isActive) {
-        return res.status(401).json({ message: 'Account is deactivated' });
+        res.status(401).json({ message: 'Account is deactivated' });
+        return;
       }
 
       // Verify password
       const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) {
-        return res.status(401).json({ message: 'Invalid credentials' });
+        res.status(401).json({ message: 'Invalid credentials' });
+        return;
       }
 
       // Update last login
@@ -134,10 +146,15 @@ router.post(
       });
 
       // Generate JWT token
+      const jwtSecret = process.env.JWT_SECRET;
+      if (!jwtSecret) {
+        throw new Error('JWT_SECRET is not defined');
+      }
+
       const token = jwt.sign(
         { userId: user._id, role: user.role },
-        process.env.JWT_SECRET,
-        { expiresIn: process.env.JWT_EXPIRE || '7d' }
+        jwtSecret,
+        { expiresIn: process.env.JWT_EXPIRE || '7d' } as jwt.SignOptions
       );
 
       res.json({
@@ -161,18 +178,25 @@ router.post(
 // @route   GET /api/auth/me
 // @desc    Get current user
 // @access  Private
-router.get('/me', async (req, res) => {
+router.get('/me', async (req: Request, res: Response): Promise<void> => {
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
     if (!token) {
-      return res.status(401).json({ message: 'No token provided' });
+      res.status(401).json({ message: 'No token provided' });
+      return;
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      throw new Error('JWT_SECRET is not defined');
+    }
+
+    const decoded = jwt.verify(token, jwtSecret) as { userId: string };
     const user = await User.findById(decoded.userId).select('-password').populate('facilityId');
 
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      res.status(404).json({ message: 'User not found' });
+      return;
     }
 
     res.json({ user });
@@ -182,4 +206,4 @@ router.get('/me', async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

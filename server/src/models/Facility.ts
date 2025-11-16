@@ -1,6 +1,49 @@
-const mongoose = require('mongoose');
+import mongoose, { Document, Schema } from 'mongoose';
 
-const FacilitySchema = new mongoose.Schema({
+export interface IFacility extends Document {
+  facilityId: string;
+  name: string;
+  type: 'hospital' | 'clinic' | 'puskesmas' | 'posyandu';
+  address?: {
+    street?: string;
+    city?: string;
+    province?: string;
+    postalCode?: string;
+    country: string;
+  };
+  coordinates?: {
+    latitude?: number;
+    longitude?: number;
+  };
+  phoneNumber?: string;
+  email?: string;
+  is3TArea: boolean;
+  devices?: Array<{
+    deviceId?: string;
+    deviceType?: string;
+    status: 'online' | 'offline' | 'maintenance';
+    lastConnected?: Date;
+  }>;
+  operatingHours?: {
+    monday?: string;
+    tuesday?: string;
+    wednesday?: string;
+    thursday?: string;
+    friday?: string;
+    saturday?: string;
+    sunday?: string;
+  };
+  capacity?: {
+    totalBeds?: number;
+    availableBeds?: number;
+  };
+  services?: string[];
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const FacilitySchema = new Schema<IFacility>({
   facilityId: {
     type: String,
     required: true,
@@ -74,4 +117,4 @@ const FacilitySchema = new mongoose.Schema({
   },
 });
 
-module.exports = mongoose.model('Facility', FacilitySchema);
+export default mongoose.model<IFacility>('Facility', FacilitySchema);

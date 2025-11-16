@@ -1,12 +1,32 @@
-const express = require('express');
-const cors = require('cors');
-const http = require('http');
-const { Server } = require('socket.io');
-const connectDB = require('./config/db');
-require('dotenv').config();
+import express, { Request, Response } from 'express';
+import cors from 'cors';
+import http from 'http';
+import { Server, Socket } from 'socket.io';
+import mongoose from 'mongoose';
+import dotenv from 'dotenv';
 
-// Connect to MongoDB
-connectDB();
+// Load environment variables
+dotenv.config();
+
+// Import routes
+import authRoutes from './routes/auth';
+import patientRoutes from './routes/patients';
+import observationRoutes from './routes/observations';
+import userRoutes from './routes/users';
+import facilityRoutes from './routes/facilities';
+import fhirRoutes from './routes/fhir';
+
+// MongoDB connection
+mongoose
+  .connect(process.env.MONGODB_URI as string, {
+    dbName: 'djaja'
+  })
+  .then(() => {
+    console.log('✅ Connected to MongoDB');
+  })
+  .catch((err) => {
+    console.error('❌ MongoDB connection error:', err);
+  });
 
 const app = express();
 const server = http.createServer(app);
@@ -26,23 +46,53 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Routes
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/patients', require('./routes/patients'));
-app.use('/api/observations', require('./routes/observations'));
-app.use('/api/users', require('./routes/users'));
-app.use('/api/facilities', require('./routes/facilities'));
-app.use('/api/fhir', require('./routes/fhir'));
+app.use('/api/auth', authRoutes);
+app.use('/api/patients', patientRoutes);
+app.use('/api/observations', observationRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/facilities', facilityRoutes);
+app.use('/api/fhir', fhirRoutes);
 
 // Health check
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (req: Request, res: Response) => {
   res.json({ status: 'OK', message: 'Djaja Diagnostics API is running' });
 });
 
+// WebSocket interfaces
+interface DeviceData {
+  deviceId: string;
+  patientId: string;
+  bloodPressure?: {
+    systolic: number;
+    diastolic: number;
+  };
+  heartRate?: number;
+  spO2?: number;
+  glucose?: number;
+  ekg?: {
+    rhythm: 'regular' | 'irregular';
+  };
+  timestamp: string;
+}
+
+interface AnalysisResult {
+  status: string;
+  message: string;
+}
+
+interface VitalsAnalysis {
+  bloodPressure?: AnalysisResult;
+  heartRate?: AnalysisResult;
+  spO2?: AnalysisResult;
+  glucose?: AnalysisResult;
+  ekg?: AnalysisResult;
+}
+
 // WebSocket for IoT device simulation
-io.on('connection', (socket) => {
+io.on('connection', (socket: Socket) => {
   console.log('Device connected:', socket.id);
 
-  socket.on('device-data', (data) => {
+  socket.on('device-data', (data: DeviceData) => {
     console.log('Received device data:', data);
     // Broadcast to all connected clients (simulating cloud processing)
     io.emit('diagnostic-result', {
@@ -58,8 +108,8 @@ io.on('connection', (socket) => {
 });
 
 // Simple diagnostic analysis function (rule-based)
-function analyzeVitals(data) {
-  const results = {};
+function analyzeVitals(data: DeviceData): VitalsAnalysis {
+  const results: VitalsAnalysis = {};
 
   // Blood Pressure Analysis
   if (data.bloodPressure) {

@@ -1,12 +1,13 @@
-const express = require('express');
-const router = express.Router();
-const { auth, authorize } = require('../middleware/auth');
-const User = require('../models/User');
+import express, { Request, Response, Router } from 'express';
+import { auth, authorize } from '../middleware/auth';
+import User from '../models/User';
+
+const router: Router = express.Router();
 
 // @route   GET /api/users
 // @desc    Get all users
 // @access  Private (admin)
-router.get('/', auth, authorize('admin'), async (req, res) => {
+router.get('/', auth, authorize('admin'), async (req: Request, res: Response): Promise<void> => {
   try {
     const users = await User.find({ isActive: true })
       .select('-password')
@@ -23,14 +24,15 @@ router.get('/', auth, authorize('admin'), async (req, res) => {
 // @route   GET /api/users/:id
 // @desc    Get user by ID
 // @access  Private
-router.get('/:id', auth, async (req, res) => {
+router.get('/:id', auth, async (req: Request, res: Response): Promise<void> => {
   try {
     const user = await User.findById(req.params.id)
       .select('-password')
       .populate('facilityId');
 
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      res.status(404).json({ message: 'User not found' });
+      return;
     }
 
     res.json({ user });
@@ -40,4 +42,4 @@ router.get('/:id', auth, async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

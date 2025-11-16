@@ -1,24 +1,26 @@
-const express = require('express');
-const router = express.Router();
-const { auth } = require('../middleware/auth');
-const Patient = require('../models/Patient');
-const Observation = require('../models/Observation');
+import express, { Request, Response, Router } from 'express';
+import { auth } from '../middleware/auth';
+import Patient from '../models/Patient';
+import Observation from '../models/Observation';
+
+const router: Router = express.Router();
 
 // @route   GET /api/fhir/Patient/:id
 // @desc    Get patient in FHIR format
 // @access  Private
-router.get('/Patient/:id', auth, async (req, res) => {
+router.get('/Patient/:id', auth, async (req: Request, res: Response): Promise<void> => {
   try {
     const patient = await Patient.findById(req.params.id);
 
     if (!patient) {
-      return res.status(404).json({ message: 'Patient not found' });
+      res.status(404).json({ message: 'Patient not found' });
+      return;
     }
 
     // Convert to FHIR R4 format
     const fhirPatient = {
       resourceType: 'Patient',
-      id: patient._id.toString(),
+      id: patient.patientId.toString(),
       identifier: [
         {
           system: 'http://djaja-diagnostics.com/patient-id',
@@ -63,18 +65,19 @@ router.get('/Patient/:id', auth, async (req, res) => {
 // @route   GET /api/fhir/Observation/:id
 // @desc    Get observation in FHIR format
 // @access  Private
-router.get('/Observation/:id', auth, async (req, res) => {
+router.get('/Observation/:id', auth, async (req: Request, res: Response): Promise<void> => {
   try {
     const observation = await Observation.findById(req.params.id)
       .populate('patientId')
       .populate('performedBy');
 
     if (!observation) {
-      return res.status(404).json({ message: 'Observation not found' });
+      res.status(404).json({ message: 'Observation not found' });
+      return;
     }
 
     // Convert to FHIR R4 format
-    const components = [];
+    const components: any[] = [];
 
     if (observation.measurements.bloodPressure) {
       components.push({
@@ -135,7 +138,7 @@ router.get('/Observation/:id', auth, async (req, res) => {
 
     const fhirObservation = {
       resourceType: 'Observation',
-      id: observation._id.toString(),
+      id: observation.observationId.toString(),
       identifier: [
         {
           system: 'http://djaja-diagnostics.com/observation-id',
@@ -165,14 +168,14 @@ router.get('/Observation/:id', auth, async (req, res) => {
         text: observation.testType,
       },
       subject: {
-        reference: `Patient/${observation.patientId._id}`,
-        display: observation.patientId.name,
+        reference: `Patient/${(observation.patientId as any)._id}`,
+        display: (observation.patientId as any).name,
       },
       effectiveDateTime: observation.createdAt.toISOString(),
       performer: [
         {
-          reference: `Practitioner/${observation.performedBy._id}`,
-          display: observation.performedBy.name,
+          reference: `Practitioner/${(observation.performedBy as any)._id}`,
+          display: (observation.performedBy as any).name,
         },
       ],
       component: components,
@@ -188,7 +191,7 @@ router.get('/Observation/:id', auth, async (req, res) => {
 // @route   POST /api/fhir/Observation
 // @desc    Create observation from FHIR format
 // @access  Private
-router.post('/Observation', auth, async (req, res) => {
+router.post('/Observation', auth, async (req: Request, res: Response): Promise<void> => {
   try {
     // This is a simplified FHIR receiver
     // In production, you'd validate the FHIR resource structure
@@ -202,4 +205,4 @@ router.post('/Observation', auth, async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
