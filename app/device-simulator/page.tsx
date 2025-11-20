@@ -56,10 +56,10 @@ interface StreamingState {
 export default function DeviceSimulator() {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [vitals, setVitals] = useState<VitalSigns>({
-    bloodPressure: { systolic: 120, diastolic: 80 },
-    heartRate: 75,
-    spO2: 98,
-    temperature: 36.8,
+    bloodPressure: { systolic: 0, diastolic: 0 },
+    heartRate: 0,
+    spO2: 0,
+    temperature: 0,
     ekg: { rhythm: 'regular' },
   });
   const [result, setResult] = useState<DiagnosticResult | null>(null);
@@ -262,6 +262,13 @@ export default function DeviceSimulator() {
       return;
     }
 
+    // Stop all currently streaming vitals before starting the new one
+    Object.keys(isStreaming).forEach((key) => {
+      if (isStreaming[key as keyof StreamingState]) {
+        stopVitalStreaming(key as keyof StreamingState);
+      }
+    });
+
     setIsStreaming((prev) => ({ ...prev, [vitalType]: true }));
     console.log(`▶️ Starting ${vitalType} stream...`);
 
@@ -411,29 +418,42 @@ export default function DeviceSimulator() {
             </Card>
 
             {/* Individual Vital Streaming Controls */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Individual Vital Controls</CardTitle>
-                <CardDescription>Start/stop streaming for each vital sign</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-3">
-                  {/* Blood Pressure */}
-                  <div className="flex flex-col p-4 bg-blue-50 rounded-lg border border-blue-200">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Activity className="w-5 h-5 text-blue-600" />
-                      <div className="font-medium text-blue-900">Blood Pressure</div>
+            <div className="space-y-4">
+              {/* Blood Pressure */}
+              <Card className="border-blue-200">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3 min-w-[200px]">
+                      <Activity className="w-6 h-6 text-blue-600" />
+                      <div>
+                        <div className="font-medium text-blue-900">Blood Pressure</div>
+                        <div className="text-2xl font-bold text-blue-900">
+                          {vitals.bloodPressure.systolic === 0 ? '--/--' : `${vitals.bloodPressure.systolic}/${vitals.bloodPressure.diastolic}`} <span className="text-xs font-normal text-blue-600">mmHg</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-2xl font-bold text-blue-900 mb-1">
-                      {vitals.bloodPressure.systolic}/{vitals.bloodPressure.diastolic}
+                    
+                    <div className="flex-1 h-24">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={vitalHistory.bloodPressure}>
+                          <Line
+                            type="monotone"
+                            dataKey="value"
+                            stroke="#3b82f6"
+                            strokeWidth={2}
+                            dot={false}
+                            isAnimationActive={false}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
                     </div>
-                    <div className="text-xs text-blue-600 mb-3">mmHg</div>
+
                     {!isStreaming.bloodPressure ? (
                       <Button
                         size="sm"
                         onClick={() => startVitalStreaming('bloodPressure')}
                         disabled={!isConnected}
-                        className="w-full"
+                        className="ml-4"
                       >
                         <Play className="w-4 h-4 mr-1" />
                         Start
@@ -443,28 +463,51 @@ export default function DeviceSimulator() {
                         size="sm"
                         variant="destructive"
                         onClick={() => stopVitalStreaming('bloodPressure')}
-                        className="w-full"
+                        className="ml-4"
                       >
                         <Pause className="w-4 h-4 mr-1" />
                         Stop
                       </Button>
                     )}
                   </div>
+                </CardContent>
+              </Card>
 
-                  {/* Heart Rate */}
-                  <div className="flex flex-col p-4 bg-red-50 rounded-lg border border-red-200">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Heart className="w-5 h-5 text-red-600" />
-                      <div className="font-medium text-red-900">Heart Rate</div>
+              {/* Heart Rate */}
+              <Card className="border-red-200">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3 min-w-[200px]">
+                      <Heart className="w-6 h-6 text-red-600" />
+                      <div>
+                        <div className="font-medium text-red-900">Heart Rate</div>
+                        <div className="text-2xl font-bold text-red-900">
+                          {vitals.heartRate === 0 ? '--' : vitals.heartRate} <span className="text-xs font-normal text-red-600">bpm</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-2xl font-bold text-red-900 mb-1">{vitals.heartRate}</div>
-                    <div className="text-xs text-red-600 mb-3">bpm</div>
+                    
+                    <div className="flex-1 h-24">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={vitalHistory.heartRate}>
+                          <Line
+                            type="monotone"
+                            dataKey="value"
+                            stroke="#ef4444"
+                            strokeWidth={2}
+                            dot={false}
+                            isAnimationActive={false}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+
                     {!isStreaming.heartRate ? (
                       <Button
                         size="sm"
                         onClick={() => startVitalStreaming('heartRate')}
                         disabled={!isConnected}
-                        className="w-full"
+                        className="ml-4"
                       >
                         <Play className="w-4 h-4 mr-1" />
                         Start
@@ -474,28 +517,51 @@ export default function DeviceSimulator() {
                         size="sm"
                         variant="destructive"
                         onClick={() => stopVitalStreaming('heartRate')}
-                        className="w-full"
+                        className="ml-4"
                       >
                         <Pause className="w-4 h-4 mr-1" />
                         Stop
                       </Button>
                     )}
                   </div>
+                </CardContent>
+              </Card>
 
-                  {/* SpO2 */}
-                  <div className="flex flex-col p-4 bg-green-50 rounded-lg border border-green-200">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Droplet className="w-5 h-5 text-green-600" />
-                      <div className="font-medium text-green-900">SpO2</div>
+              {/* SpO2 */}
+              <Card className="border-green-200">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3 min-w-[200px]">
+                      <Droplet className="w-6 h-6 text-green-600" />
+                      <div>
+                        <div className="font-medium text-green-900">SpO2</div>
+                        <div className="text-2xl font-bold text-green-900">
+                          {vitals.spO2 === 0 ? '--' : vitals.spO2}% <span className="text-xs font-normal text-green-600">O₂</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-2xl font-bold text-green-900 mb-1">{vitals.spO2}%</div>
-                    <div className="text-xs text-green-600 mb-3">Oxygen Saturation</div>
+                    
+                    <div className="flex-1 h-24">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={vitalHistory.spO2}>
+                          <Line
+                            type="monotone"
+                            dataKey="value"
+                            stroke="#10b981"
+                            strokeWidth={2}
+                            dot={false}
+                            isAnimationActive={false}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+
                     {!isStreaming.spO2 ? (
                       <Button
                         size="sm"
                         onClick={() => startVitalStreaming('spO2')}
                         disabled={!isConnected}
-                        className="w-full"
+                        className="ml-4"
                       >
                         <Play className="w-4 h-4 mr-1" />
                         Start
@@ -505,28 +571,51 @@ export default function DeviceSimulator() {
                         size="sm"
                         variant="destructive"
                         onClick={() => stopVitalStreaming('spO2')}
-                        className="w-full"
+                        className="ml-4"
                       >
                         <Pause className="w-4 h-4 mr-1" />
                         Stop
                       </Button>
                     )}
                   </div>
+                </CardContent>
+              </Card>
 
-                  {/* Temperature */}
-                  <div className="flex flex-col p-4 bg-orange-50 rounded-lg border border-orange-200">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Thermometer className="w-5 h-5 text-orange-600" />
-                      <div className="font-medium text-orange-900">Temperature</div>
+              {/* Temperature */}
+              <Card className="border-orange-200">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3 min-w-[200px]">
+                      <Thermometer className="w-6 h-6 text-orange-600" />
+                      <div>
+                        <div className="font-medium text-orange-900">Temperature</div>
+                        <div className="text-2xl font-bold text-orange-900">
+                          {vitals.temperature === 0 ? '--.-' : vitals.temperature}°C
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-2xl font-bold text-orange-900 mb-1">{vitals.temperature}°C</div>
-                    <div className="text-xs text-orange-600 mb-3">Body Temperature</div>
+                    
+                    <div className="flex-1 h-24">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={vitalHistory.temperature}>
+                          <Line
+                            type="monotone"
+                            dataKey="value"
+                            stroke="#f97316"
+                            strokeWidth={2}
+                            dot={false}
+                            isAnimationActive={false}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+
                     {!isStreaming.temperature ? (
                       <Button
                         size="sm"
                         onClick={() => startVitalStreaming('temperature')}
                         disabled={!isConnected}
-                        className="w-full"
+                        className="ml-4"
                       >
                         <Play className="w-4 h-4 mr-1" />
                         Start
@@ -536,28 +625,57 @@ export default function DeviceSimulator() {
                         size="sm"
                         variant="destructive"
                         onClick={() => stopVitalStreaming('temperature')}
-                        className="w-full"
+                        className="ml-4"
                       >
                         <Pause className="w-4 h-4 mr-1" />
                         Stop
                       </Button>
                     )}
                   </div>
+                </CardContent>
+              </Card>
 
-                  {/* EKG */}
-                  <div className="flex flex-col p-4 bg-purple-50 rounded-lg border border-purple-200 col-span-2">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Zap className="w-5 h-5 text-purple-600" />
-                      <div className="font-medium text-purple-900">EKG Rhythm</div>
+              {/* EKG */}
+              <Card className="border-purple-200">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3 min-w-[200px]">
+                      <Zap className="w-6 h-6 text-purple-600" />
+                      <div>
+                        <div className="font-medium text-purple-900">EKG Rhythm</div>
+                        <div className="text-2xl font-bold text-purple-900">
+                          {vitals.ekg.rhythm}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-2xl font-bold text-purple-900 mb-1">{vitals.ekg.rhythm}</div>
-                    <div className="text-xs text-purple-600 mb-3">Electrocardiogram</div>
+                    
+                    <div className="flex-1 h-24 bg-gray-900 rounded">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={vitalHistory.ecg}>
+                          <defs>
+                            <linearGradient id="ecgGradientSmall" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
+                              <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <Area
+                            type="monotone"
+                            dataKey="value"
+                            stroke="#10b981"
+                            strokeWidth={2}
+                            fill="url(#ecgGradientSmall)"
+                            isAnimationActive={false}
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+
                     {!isStreaming.ekg ? (
                       <Button
                         size="sm"
                         onClick={() => startVitalStreaming('ekg')}
                         disabled={!isConnected}
-                        className="w-full"
+                        className="ml-4"
                       >
                         <Play className="w-4 h-4 mr-1" />
                         Start
@@ -567,223 +685,20 @@ export default function DeviceSimulator() {
                         size="sm"
                         variant="destructive"
                         onClick={() => stopVitalStreaming('ekg')}
-                        className="w-full"
+                        className="ml-4"
                       >
                         <Pause className="w-4 h-4 mr-1" />
                         Stop
                       </Button>
                     )}
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </div>
           </div>
 
           {/* Real-Time Dashboard */}
           <div className="space-y-6">
-
-            {/* ECG Waveform */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Zap className="w-5 h-5" />
-                  ECG Waveform
-                  {isStreaming.ekg && (
-                    <span className="ml-auto text-xs text-red-600 font-medium flex items-center gap-1">
-                      <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                      LIVE
-                    </span>
-                  )}
-                </CardTitle>
-                <CardDescription>Real-time electrocardiogram</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-48 bg-gray-900 rounded-lg p-4">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={vitalHistory.ecg}>
-                      <defs>
-                        <linearGradient id="ecgGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
-                          <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                      <XAxis
-                        dataKey="timestamp"
-                        stroke="#9ca3af"
-                        tick={false}
-                        axisLine={{ stroke: '#374151' }}
-                      />
-                      <YAxis
-                        stroke="#9ca3af"
-                        domain={[-0.5, 1.2]}
-                        tick={{ fill: '#9ca3af', fontSize: 12 }}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="value"
-                        stroke="#10b981"
-                        strokeWidth={2}
-                        fill="url(#ecgGradient)"
-                        isAnimationActive={false}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="mt-2 text-xs text-muted-foreground text-center">
-                  Rhythm: {vitals.ekg.rhythm.toUpperCase()} | Rate: {vitals.heartRate} BPM
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Vital Trends Charts */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Heart className="w-5 h-5" />
-                  Vital Trends
-                </CardTitle>
-                <CardDescription>Historical data from streaming session</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Heart Rate Chart */}
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Heart Rate</h4>
-                  <div className="h-32">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={vitalHistory.heartRate}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis
-                          dataKey="timestamp"
-                          tick={false}
-                          stroke="#9ca3af"
-                        />
-                        <YAxis
-                          domain={[40, 150]}
-                          stroke="#9ca3af"
-                          tick={{ fill: '#6b7280', fontSize: 11 }}
-                        />
-                        <Tooltip
-                          labelFormatter={(value) => new Date(value).toLocaleTimeString()}
-                          formatter={(value: number) => [`${value} bpm`, 'HR']}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="value"
-                          stroke="#ef4444"
-                          strokeWidth={2}
-                          dot={false}
-                          isAnimationActive={false}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* SpO2 Chart */}
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Oxygen Saturation (SpO2)</h4>
-                  <div className="h-32">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={vitalHistory.spO2}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis
-                          dataKey="timestamp"
-                          tick={false}
-                          stroke="#9ca3af"
-                        />
-                        <YAxis
-                          domain={[85, 100]}
-                          stroke="#9ca3af"
-                          tick={{ fill: '#6b7280', fontSize: 11 }}
-                        />
-                        <Tooltip
-                          labelFormatter={(value) => new Date(value).toLocaleTimeString()}
-                          formatter={(value: number) => [`${value}%`, 'SpO2']}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="value"
-                          stroke="#10b981"
-                          strokeWidth={2}
-                          dot={false}
-                          isAnimationActive={false}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* Blood Pressure Chart */}
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Blood Pressure (Systolic)</h4>
-                  <div className="h-32">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={vitalHistory.bloodPressure}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis
-                          dataKey="timestamp"
-                          tick={false}
-                          stroke="#9ca3af"
-                        />
-                        <YAxis
-                          domain={[80, 180]}
-                          stroke="#9ca3af"
-                          tick={{ fill: '#6b7280', fontSize: 11 }}
-                        />
-                        <Tooltip
-                          labelFormatter={(value) => new Date(value).toLocaleTimeString()}
-                          formatter={(value: number) => [`${value} mmHg`, 'Systolic']}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="value"
-                          stroke="#3b82f6"
-                          strokeWidth={2}
-                          dot={false}
-                          isAnimationActive={false}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* Temperature Chart */}
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Body Temperature</h4>
-                  <div className="h-32">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={vitalHistory.temperature}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis
-                          dataKey="timestamp"
-                          tick={false}
-                          stroke="#9ca3af"
-                        />
-                        <YAxis
-                          domain={[35, 40]}
-                          stroke="#9ca3af"
-                          tick={{ fill: '#6b7280', fontSize: 11 }}
-                        />
-                        <Tooltip
-                          labelFormatter={(value) => new Date(value).toLocaleTimeString()}
-                          formatter={(value: number) => [`${value}°C`, 'Temp']}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="value"
-                          stroke="#f97316"
-                          strokeWidth={2}
-                          dot={false}
-                          isAnimationActive={false}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
             {/* AI Diagnostic Analysis */}
             <Card className="sticky top-8">
               <CardHeader>
