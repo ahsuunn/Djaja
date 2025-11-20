@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Activity, Heart, Droplet, Stethoscope, Zap, Play, Pause, Wifi, WifiOff, Thermometer } from 'lucide-react';
+import { Activity, Heart, Droplet, Stethoscope, Zap, Play, Pause, Wifi, WifiOff, Thermometer, Search, UserPlus, User } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -53,6 +53,16 @@ interface StreamingState {
   ekg: boolean;
 }
 
+interface Patient {
+  _id: string;
+  patientId: string;
+  name: string;
+  dateOfBirth: string;
+  gender: string;
+  phoneNumber: string;
+  bloodType: string;
+}
+
 export default function DeviceSimulator() {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [vitals, setVitals] = useState<VitalSigns>({
@@ -88,6 +98,13 @@ export default function DeviceSimulator() {
     ekg: null,
   });
   const ecgIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Patient state
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [patientSearchTerm, setPatientSearchTerm] = useState('');
+  const [showPatientList, setShowPatientList] = useState(false);
+  const [loadingPatients, setLoadingPatients] = useState(false);
 
   useEffect(() => {
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:5000';
@@ -114,6 +131,41 @@ export default function DeviceSimulator() {
       newSocket.close();
     };
   }, []);
+
+  // Fetch patients on mount
+  useEffect(() => {
+    fetchPatients();
+  }, []);
+
+  const fetchPatients = async () => {
+    try {
+      setLoadingPatients(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.error('No auth token found');
+        return;
+      }
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${apiUrl}/api/patients`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch patients');
+      }
+
+      const data = await response.json();
+      setPatients(data.patients || []);
+    } catch (error) {
+      console.error('Fetch patients error:', error);
+    } finally {
+      setLoadingPatients(false);
+    }
+  };
 
   const generateRandomVitals = () => {
     const scenarios = [
@@ -242,7 +294,7 @@ export default function DeviceSimulator() {
 
     const deviceData = {
       deviceId: `SIM-${Date.now()}`,
-      patientId: 'demo-patient',
+      patientId: selectedPatient?.patientId || 'demo-patient',
       bloodPressure: dataToSend.bloodPressure,
       heartRate: dataToSend.heartRate,
       spO2: dataToSend.spO2,
@@ -373,50 +425,110 @@ export default function DeviceSimulator() {
           </div>
         </div>
 
+        {/* Patient Selection */}
+        <Card className="mb-8 border-2 border-primary/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <User className="w-5 h-5" />
+              Patient Selection
+            </CardTitle>
+            <CardDescription>
+              Select a patient to associate with device readings
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-4 items-start">
+              <div className="flex-1 relative">
+                <div className="relative">
+                  <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search patients by name or ID..."
+                    value={patientSearchTerm}
+                    onChange={(e) => {
+                      setPatientSearchTerm(e.target.value);
+                      setShowPatientList(true);
+                    }}
+                    onFocus={() => setShowPatientList(true)}
+                    className="pl-10"
+                  />
+                </div>
+                
+                {/* Patient Dropdown */}
+                {showPatientList && patientSearchTerm && (
+                  <div className="absolute z-10 w-full mt-2 bg-white border rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                    {patients
+                      .filter((p) =>
+                        p.name.toLowerCase().includes(patientSearchTerm.toLowerCase()) ||
+                        p.patientId.toLowerCase().includes(patientSearchTerm.toLowerCase())
+                      )
+                      .map((patient) => (
+                        <div
+                          key={patient._id}
+                          onClick={() => {
+                            setSelectedPatient(patient);
+                            setPatientSearchTerm('');
+                            setShowPatientList(false);
+                          }}
+                          className="p-3 hover:bg-muted cursor-pointer border-b last:border-b-0"
+                        >
+                          <div className="font-medium">{patient.name}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {patient.patientId} • {patient.gender} • {patient.bloodType}
+                          </div>
+                        </div>
+                      ))}
+                    {patients.filter((p) =>
+                      p.name.toLowerCase().includes(patientSearchTerm.toLowerCase()) ||
+                      p.patientId.toLowerCase().includes(patientSearchTerm.toLowerCase())
+                    ).length === 0 && (
+                      <div className="p-4 text-center text-muted-foreground">
+                        No patients found
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              <Button
+                onClick={() => window.open('/patients', '_blank')}
+                variant="outline"
+                className="flex-shrink-0"
+              >
+                <UserPlus className="w-4 h-4 mr-2" />
+                Add Patient
+              </Button>
+            </div>
+
+            {/* Selected Patient Display */}
+            {selectedPatient ? (
+              <div className="mt-4 p-4 bg-primary/5 border border-primary/20 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-lg">{selectedPatient.name}</div>
+                    <div className="text-sm text-muted-foreground">
+                      ID: {selectedPatient.patientId} • {selectedPatient.gender} • Blood Type: {selectedPatient.bloodType}
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedPatient(null)}
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 p-4 bg-muted/50 border border-dashed rounded-lg text-center text-muted-foreground">
+                No patient selected. Device readings will use demo patient ID.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Device Controls */}
           <div className="space-y-6">
-            {/* Global Controls */}
-            <Card className="border-2 border-primary/20">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Wifi className="w-5 h-5" />
-                  Global Settings
-                </CardTitle>
-                <CardDescription>Configure streaming interval and generate test data</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium">Stream Interval (ms)</label>
-                  <Input
-                    type="number"
-                    value={streamInterval}
-                    onChange={(e) => setStreamInterval(Number(e.target.value))}
-                    min="500"
-                    max="10000"
-                    step="500"
-                    disabled={anyStreaming}
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Data sent every {streamInterval / 1000} seconds
-                  </p>
-                </div>
-
-                <div className="flex gap-2">
-                  <Button onClick={generateRandomVitals} variant="outline" className="flex-1" disabled={anyStreaming}>
-                    Generate Random
-                  </Button>
-                  <Button
-                    onClick={() => sendToCloud()}
-                    disabled={!isConnected || isSending || anyStreaming}
-                    className="flex-1"
-                  >
-                    {isSending ? 'Processing...' : 'Send Single'}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
             {/* Individual Vital Streaming Controls */}
             <div className="space-y-4">
               {/* Blood Pressure */}
