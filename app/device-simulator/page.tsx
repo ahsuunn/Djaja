@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Activity, Heart, Droplet, Stethoscope, Zap, Play, Pause, Wifi, WifiOff } from 'lucide-react';
+import { Activity, Heart, Droplet, Stethoscope, Zap, Play, Pause, Wifi, WifiOff, Thermometer } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ interface VitalSigns {
   };
   heartRate: number;
   spO2: number;
-  glucose: number;
+  temperature: number;
   ekg: {
     rhythm: 'regular' | 'irregular';
   };
@@ -26,7 +26,7 @@ interface DiagnosticResult {
     bloodPressure?: { status: string; message: string };
     heartRate?: { status: string; message: string };
     spO2?: { status: string; message: string };
-    glucose?: { status: string; message: string };
+    temperature?: { status: string; message: string };
     ekg?: { status: string; message: string };
   };
   processedAt: string;
@@ -41,8 +41,16 @@ interface VitalHistory {
   bloodPressure: DataPoint[];
   heartRate: DataPoint[];
   spO2: DataPoint[];
-  glucose: DataPoint[];
+  temperature: DataPoint[];
   ecg: DataPoint[];
+}
+
+interface StreamingState {
+  bloodPressure: boolean;
+  heartRate: boolean;
+  spO2: boolean;
+  temperature: boolean;
+  ekg: boolean;
 }
 
 export default function DeviceSimulator() {
@@ -51,22 +59,34 @@ export default function DeviceSimulator() {
     bloodPressure: { systolic: 120, diastolic: 80 },
     heartRate: 75,
     spO2: 98,
-    glucose: 95,
+    temperature: 36.8,
     ekg: { rhythm: 'regular' },
   });
   const [result, setResult] = useState<DiagnosticResult | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [isStreaming, setIsStreaming] = useState(false);
+  const [isStreaming, setIsStreaming] = useState<StreamingState>({
+    bloodPressure: false,
+    heartRate: false,
+    spO2: false,
+    temperature: false,
+    ekg: false,
+  });
   const [streamInterval, setStreamInterval] = useState(2000); // ms
   const [vitalHistory, setVitalHistory] = useState<VitalHistory>({
     bloodPressure: [],
     heartRate: [],
     spO2: [],
-    glucose: [],
+    temperature: [],
     ecg: [],
   });
-  const streamIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const streamIntervalsRef = useRef<Record<string, NodeJS.Timeout | null>>({
+    bloodPressure: null,
+    heartRate: null,
+    spO2: null,
+    temperature: null,
+    ekg: null,
+  });
   const ecgIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -98,13 +118,13 @@ export default function DeviceSimulator() {
   const generateRandomVitals = () => {
     const scenarios = [
       // Normal
-      { bp: { systolic: 120, diastolic: 80 }, hr: 75, spo2: 98, glucose: 95, ekg: 'regular' },
+      { bp: { systolic: 120, diastolic: 80 }, hr: 75, spo2: 98, temp: 36.8, ekg: 'regular' },
       // Hypertension
-      { bp: { systolic: 145, diastolic: 95 }, hr: 88, spo2: 96, glucose: 110, ekg: 'regular' },
+      { bp: { systolic: 145, diastolic: 95 }, hr: 88, spo2: 96, temp: 37.2, ekg: 'regular' },
       // Critical
-      { bp: { systolic: 185, diastolic: 115 }, hr: 110, spo2: 89, glucose: 220, ekg: 'irregular' },
+      { bp: { systolic: 185, diastolic: 115 }, hr: 110, spo2: 89, temp: 38.5, ekg: 'irregular' },
       // Hypotension
-      { bp: { systolic: 95, diastolic: 60 }, hr: 58, spo2: 94, glucose: 68, ekg: 'regular' },
+      { bp: { systolic: 95, diastolic: 60 }, hr: 58, spo2: 94, temp: 35.8, ekg: 'regular' },
     ];
 
     const scenario = scenarios[Math.floor(Math.random() * scenarios.length)];
@@ -112,82 +132,96 @@ export default function DeviceSimulator() {
       bloodPressure: scenario.bp,
       heartRate: scenario.hr,
       spO2: scenario.spo2,
-      glucose: scenario.glucose,
+      temperature: scenario.temp,
       ekg: { rhythm: scenario.ekg as 'regular' | 'irregular' },
     });
   };
 
-  // Generate realistic vital variations (simulates natural body fluctuations)
-  const generateRealisticVitals = (baseVitals: VitalSigns): VitalSigns => {
-    const vary = (value: number, range: number) => {
-      return Math.round(value + (Math.random() - 0.5) * range);
-    };
+  // Helper randomization helpers
+  const vary = (value: number, range: number) => Math.round(value + (Math.random() - 0.5) * range);
+  const varyDecimal = (value: number, range: number) => Math.round((value + (Math.random() - 0.5) * range) * 10) / 10;
+
+  // Generate realistic vital variations for all vitals (keeps existing behaviour)
+  const generateRealisticVitals = (baseVitals: VitalSigns): VitalSigns => ({
+    bloodPressure: {
+      systolic: vary(baseVitals.bloodPressure.systolic, 5),
+      diastolic: vary(baseVitals.bloodPressure.diastolic, 3),
+    },
+    heartRate: vary(baseVitals.heartRate, 3),
+    spO2: Math.min(100, vary(baseVitals.spO2, 1)),
+    temperature: varyDecimal(baseVitals.temperature, 0.2),
+    ekg: baseVitals.ekg,
+  });
+
+  // Generate realistic changes only for a single vital while leaving others unchanged
+  const generatePartialVitals = (vitalType: keyof StreamingState, baseVitals: VitalSigns): VitalSigns => {
+    const bp = { ...baseVitals.bloodPressure };
+    let hr = baseVitals.heartRate;
+    let spo2 = baseVitals.spO2;
+    let temp = baseVitals.temperature;
+    const ekg = baseVitals.ekg;
+
+    switch (vitalType) {
+      case 'bloodPressure':
+        bp.systolic = vary(bp.systolic, 5);
+        bp.diastolic = vary(bp.diastolic, 3);
+        break;
+      case 'heartRate':
+        hr = vary(hr, 3);
+        break;
+      case 'spO2':
+        spo2 = Math.min(100, vary(spo2, 1));
+        break;
+      case 'temperature':
+        temp = varyDecimal(temp, 0.2);
+        break;
+      default:
+        break;
+    }
 
     return {
-      bloodPressure: {
-        systolic: vary(baseVitals.bloodPressure.systolic, 5),
-        diastolic: vary(baseVitals.bloodPressure.diastolic, 3),
-      },
-      heartRate: vary(baseVitals.heartRate, 3),
-      spO2: Math.min(100, vary(baseVitals.spO2, 1)),
-      glucose: vary(baseVitals.glucose, 5),
-      ekg: baseVitals.ekg,
+      bloodPressure: bp,
+      heartRate: hr,
+      spO2: spo2,
+      temperature: temp,
+      ekg,
     };
   };
 
-  // Add data point to history (keep last 30 points)
-  const addToHistory = (newVitals: VitalSigns) => {
+  // Add data point to history
+  const addToHistory = (vitalType: keyof VitalHistory, value: number) => {
     const timestamp = Date.now();
     const maxPoints = 30;
 
     setVitalHistory((prev) => ({
-      bloodPressure: [
-        ...prev.bloodPressure.slice(-maxPoints + 1),
-        { timestamp, value: newVitals.bloodPressure.systolic },
+      ...prev,
+      [vitalType]: [
+        ...prev[vitalType].slice(-maxPoints + 1),
+        { timestamp, value },
       ],
-      heartRate: [
-        ...prev.heartRate.slice(-maxPoints + 1),
-        { timestamp, value: newVitals.heartRate },
-      ],
-      spO2: [
-        ...prev.spO2.slice(-maxPoints + 1),
-        { timestamp, value: newVitals.spO2 },
-      ],
-      glucose: [
-        ...prev.glucose.slice(-maxPoints + 1),
-        { timestamp, value: newVitals.glucose },
-      ],
-      ecg: prev.ecg, // ECG updated separately at higher frequency
     }));
   };
 
-  // Generate ECG waveform data (simulates heart electrical activity)
+  // Generate ECG waveform data
   const generateECGPoint = () => {
     const timestamp = Date.now();
-    // Simulate ECG waveform: P wave, QRS complex, T wave
-    const phase = (timestamp % 1000) / 1000; // 0 to 1 cycle per second
+    const phase = (timestamp % 1000) / 1000;
     let value = 0;
 
     if (phase < 0.1) {
-      // P wave
       value = Math.sin(phase * Math.PI * 10) * 0.2;
     } else if (phase < 0.2) {
-      // PR segment
       value = 0;
     } else if (phase < 0.35) {
-      // QRS complex
       if (phase < 0.25) value = -0.3;
       else if (phase < 0.3) value = 1.0;
       else value = -0.2;
     } else if (phase < 0.5) {
-      // ST segment
       value = 0;
     } else if (phase < 0.7) {
-      // T wave
       value = Math.sin((phase - 0.5) * Math.PI * 5) * 0.3;
     }
 
-    // Add noise for realism
     value += (Math.random() - 0.5) * 0.05;
 
     setVitalHistory((prev) => ({
@@ -198,17 +232,13 @@ export default function DeviceSimulator() {
 
   const sendToCloud = (vitalData?: VitalSigns) => {
     if (!socket || !isConnected) {
-      if (!isStreaming) {
-        alert('Not connected to server. Please ensure the backend is running.');
-      }
+      alert('Not connected to server. Please ensure the backend is running.');
       return;
     }
 
     const dataToSend = vitalData || vitals;
-    if (!isStreaming) {
-      setIsSending(true);
-      setResult(null);
-    }
+    setIsSending(true);
+    setResult(null);
 
     const deviceData = {
       deviceId: `SIM-${Date.now()}`,
@@ -216,59 +246,89 @@ export default function DeviceSimulator() {
       bloodPressure: dataToSend.bloodPressure,
       heartRate: dataToSend.heartRate,
       spO2: dataToSend.spO2,
-      glucose: dataToSend.glucose,
+      temperature: dataToSend.temperature,
       ekg: dataToSend.ekg,
       timestamp: new Date().toISOString(),
     };
 
     socket.emit('device-data', deviceData);
-    console.log('📡 Streaming data:', deviceData);
+    console.log('📡 Sending data:', deviceData);
   };
 
-  // Start continuous streaming
-  const startStreaming = () => {
+  // Start streaming individual vital
+  const startVitalStreaming = (vitalType: keyof StreamingState) => {
     if (!isConnected) {
       alert('Not connected to server. Please ensure the backend is running.');
       return;
     }
 
-    setIsStreaming(true);
-    console.log('▶️ Starting continuous stream...');
+    setIsStreaming((prev) => ({ ...prev, [vitalType]: true }));
+    console.log(`▶️ Starting ${vitalType} stream...`);
 
-    // Stream vital signs at specified interval
-    streamIntervalRef.current = setInterval(() => {
-      const newVitals = generateRealisticVitals(vitals);
-      setVitals(newVitals);
-      addToHistory(newVitals);
-      sendToCloud(newVitals);
-    }, streamInterval);
+    if (vitalType === 'ekg') {
+      // Stream ECG waveform at higher frequency
+      ecgIntervalRef.current = setInterval(() => {
+        generateECGPoint();
+      }, 16); // ~60 FPS
+    } else {
+      // Stream only the selected vital at specified interval (leave others unchanged)
+      streamIntervalsRef.current[vitalType] = setInterval(() => {
+        setVitals((prev) => {
+          const updated = generatePartialVitals(vitalType, prev);
 
-    // Stream ECG waveform at higher frequency (60 Hz for smooth waveform)
-    ecgIntervalRef.current = setInterval(() => {
-      generateECGPoint();
-    }, 16); // ~60 FPS
+          // Update specific vital history based on updated values
+          switch (vitalType) {
+            case 'bloodPressure':
+              addToHistory('bloodPressure', updated.bloodPressure.systolic);
+              break;
+            case 'heartRate':
+              addToHistory('heartRate', updated.heartRate);
+              break;
+            case 'spO2':
+              addToHistory('spO2', updated.spO2);
+              break;
+            case 'temperature':
+              addToHistory('temperature', updated.temperature);
+              break;
+          }
+
+          // Send only the updated vitals snapshot to cloud
+          sendToCloud(updated);
+          return updated;
+        });
+      }, streamInterval);
+    }
   };
 
-  // Stop streaming
-  const stopStreaming = () => {
-    setIsStreaming(false);
-    console.log('⏸️ Stopping stream...');
+  // Stop streaming individual vital
+  const stopVitalStreaming = (vitalType: keyof StreamingState) => {
+    setIsStreaming((prev) => ({ ...prev, [vitalType]: false }));
+    console.log(`⏸️ Stopping ${vitalType} stream...`);
 
-    if (streamIntervalRef.current) {
-      clearInterval(streamIntervalRef.current);
-      streamIntervalRef.current = null;
-    }
-
-    if (ecgIntervalRef.current) {
-      clearInterval(ecgIntervalRef.current);
-      ecgIntervalRef.current = null;
+    if (vitalType === 'ekg') {
+      if (ecgIntervalRef.current) {
+        clearInterval(ecgIntervalRef.current);
+        ecgIntervalRef.current = null;
+      }
+    } else {
+      if (streamIntervalsRef.current[vitalType]) {
+        clearInterval(streamIntervalsRef.current[vitalType]!);
+        streamIntervalsRef.current[vitalType] = null;
+      }
     }
   };
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      stopStreaming();
+      Object.keys(streamIntervalsRef.current).forEach((key) => {
+        if (streamIntervalsRef.current[key]) {
+          clearInterval(streamIntervalsRef.current[key]!);
+        }
+      });
+      if (ecgIntervalRef.current) {
+        clearInterval(ecgIntervalRef.current);
+      }
     };
   }, []);
 
@@ -286,6 +346,8 @@ export default function DeviceSimulator() {
         return 'text-gray-600 bg-gray-50';
     }
   };
+
+  const anyStreaming = Object.values(isStreaming).some((s) => s);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-8">
@@ -307,140 +369,14 @@ export default function DeviceSimulator() {
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Device Controls */}
           <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Activity className="w-5 h-5" />
-                  Blood Pressure Monitor
-                </CardTitle>
-                <CardDescription>Systolic and Diastolic readings</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium">Systolic (mmHg)</label>
-                  <Input
-                    type="number"
-                    value={vitals.bloodPressure.systolic}
-                    onChange={(e) =>
-                      setVitals({
-                        ...vitals,
-                        bloodPressure: { ...vitals.bloodPressure, systolic: Number(e.target.value) },
-                      })
-                    }
-                    min="60"
-                    max="250"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Diastolic (mmHg)</label>
-                  <Input
-                    type="number"
-                    value={vitals.bloodPressure.diastolic}
-                    onChange={(e) =>
-                      setVitals({
-                        ...vitals,
-                        bloodPressure: { ...vitals.bloodPressure, diastolic: Number(e.target.value) },
-                      })
-                    }
-                    min="40"
-                    max="150"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Heart className="w-5 h-5" />
-                  Heart Rate & SpO2
-                </CardTitle>
-                <CardDescription>Pulse and oxygen saturation</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium">Heart Rate (bpm)</label>
-                  <Input
-                    type="number"
-                    value={vitals.heartRate}
-                    onChange={(e) => setVitals({ ...vitals, heartRate: Number(e.target.value) })}
-                    min="40"
-                    max="200"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">SpO2 (%)</label>
-                  <Input
-                    type="number"
-                    value={vitals.spO2}
-                    onChange={(e) => setVitals({ ...vitals, spO2: Number(e.target.value) })}
-                    min="70"
-                    max="100"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Droplet className="w-5 h-5" />
-                  Glucose Monitor
-                </CardTitle>
-                <CardDescription>Blood glucose level</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div>
-                  <label className="text-sm font-medium">Glucose (mg/dL)</label>
-                  <Input
-                    type="number"
-                    value={vitals.glucose}
-                    onChange={(e) => setVitals({ ...vitals, glucose: Number(e.target.value) })}
-                    min="40"
-                    max="400"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Zap className="w-5 h-5" />
-                  EKG Monitor
-                </CardTitle>
-                <CardDescription>Heart rhythm analysis</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      checked={vitals.ekg.rhythm === 'regular'}
-                      onChange={() => setVitals({ ...vitals, ekg: { rhythm: 'regular' } })}
-                    />
-                    Regular
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      checked={vitals.ekg.rhythm === 'irregular'}
-                      onChange={() => setVitals({ ...vitals, ekg: { rhythm: 'irregular' } })}
-                    />
-                    Irregular
-                  </label>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Streaming Controls */}
+            {/* Global Controls */}
             <Card className="border-2 border-primary/20">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Wifi className="w-5 h-5" />
-                  Streaming Controls
+                  Global Settings
                 </CardTitle>
-                <CardDescription>Simulate continuous IoT device data stream</CardDescription>
+                <CardDescription>Configure streaming interval and generate test data</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
@@ -452,7 +388,7 @@ export default function DeviceSimulator() {
                     min="500"
                     max="10000"
                     step="500"
-                    disabled={isStreaming}
+                    disabled={anyStreaming}
                   />
                   <p className="text-xs text-muted-foreground mt-1">
                     Data sent every {streamInterval / 1000} seconds
@@ -460,92 +396,191 @@ export default function DeviceSimulator() {
                 </div>
 
                 <div className="flex gap-2">
-                  {!isStreaming ? (
-                    <Button
-                      onClick={startStreaming}
-                      disabled={!isConnected}
-                      className="flex-1"
-                    >
-                      <Play className="w-4 h-4 mr-2" />
-                      Start Streaming
-                    </Button>
-                  ) : (
-                    <Button
-                      onClick={stopStreaming}
-                      variant="destructive"
-                      className="flex-1"
-                    >
-                      <Pause className="w-4 h-4 mr-2" />
-                      Stop Streaming
-                    </Button>
-                  )}
+                  <Button onClick={generateRandomVitals} variant="outline" className="flex-1" disabled={anyStreaming}>
+                    Generate Random
+                  </Button>
+                  <Button
+                    onClick={() => sendToCloud()}
+                    disabled={!isConnected || isSending || anyStreaming}
+                    className="flex-1"
+                  >
+                    {isSending ? 'Processing...' : 'Send Single'}
+                  </Button>
                 </div>
               </CardContent>
             </Card>
 
-            <div className="flex gap-4">
-              <Button onClick={generateRandomVitals} variant="outline" className="flex-1" disabled={isStreaming}>
-                Generate Random
-              </Button>
-              <Button
-                onClick={() => sendToCloud()}
-                disabled={!isConnected || isSending || isStreaming}
-                className="flex-1"
-              >
-                {isSending ? 'Processing...' : 'Send Single'}
-              </Button>
-            </div>
+            {/* Individual Vital Streaming Controls */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Individual Vital Controls</CardTitle>
+                <CardDescription>Start/stop streaming for each vital sign</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Blood Pressure */}
+                  <div className="flex flex-col p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Activity className="w-5 h-5 text-blue-600" />
+                      <div className="font-medium text-blue-900">Blood Pressure</div>
+                    </div>
+                    <div className="text-2xl font-bold text-blue-900 mb-1">
+                      {vitals.bloodPressure.systolic}/{vitals.bloodPressure.diastolic}
+                    </div>
+                    <div className="text-xs text-blue-600 mb-3">mmHg</div>
+                    {!isStreaming.bloodPressure ? (
+                      <Button
+                        size="sm"
+                        onClick={() => startVitalStreaming('bloodPressure')}
+                        disabled={!isConnected}
+                        className="w-full"
+                      >
+                        <Play className="w-4 h-4 mr-1" />
+                        Start
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => stopVitalStreaming('bloodPressure')}
+                        className="w-full"
+                      >
+                        <Pause className="w-4 h-4 mr-1" />
+                        Stop
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Heart Rate */}
+                  <div className="flex flex-col p-4 bg-red-50 rounded-lg border border-red-200">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Heart className="w-5 h-5 text-red-600" />
+                      <div className="font-medium text-red-900">Heart Rate</div>
+                    </div>
+                    <div className="text-2xl font-bold text-red-900 mb-1">{vitals.heartRate}</div>
+                    <div className="text-xs text-red-600 mb-3">bpm</div>
+                    {!isStreaming.heartRate ? (
+                      <Button
+                        size="sm"
+                        onClick={() => startVitalStreaming('heartRate')}
+                        disabled={!isConnected}
+                        className="w-full"
+                      >
+                        <Play className="w-4 h-4 mr-1" />
+                        Start
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => stopVitalStreaming('heartRate')}
+                        className="w-full"
+                      >
+                        <Pause className="w-4 h-4 mr-1" />
+                        Stop
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* SpO2 */}
+                  <div className="flex flex-col p-4 bg-green-50 rounded-lg border border-green-200">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Droplet className="w-5 h-5 text-green-600" />
+                      <div className="font-medium text-green-900">SpO2</div>
+                    </div>
+                    <div className="text-2xl font-bold text-green-900 mb-1">{vitals.spO2}%</div>
+                    <div className="text-xs text-green-600 mb-3">Oxygen Saturation</div>
+                    {!isStreaming.spO2 ? (
+                      <Button
+                        size="sm"
+                        onClick={() => startVitalStreaming('spO2')}
+                        disabled={!isConnected}
+                        className="w-full"
+                      >
+                        <Play className="w-4 h-4 mr-1" />
+                        Start
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => stopVitalStreaming('spO2')}
+                        className="w-full"
+                      >
+                        <Pause className="w-4 h-4 mr-1" />
+                        Stop
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Temperature */}
+                  <div className="flex flex-col p-4 bg-orange-50 rounded-lg border border-orange-200">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Thermometer className="w-5 h-5 text-orange-600" />
+                      <div className="font-medium text-orange-900">Temperature</div>
+                    </div>
+                    <div className="text-2xl font-bold text-orange-900 mb-1">{vitals.temperature}°C</div>
+                    <div className="text-xs text-orange-600 mb-3">Body Temperature</div>
+                    {!isStreaming.temperature ? (
+                      <Button
+                        size="sm"
+                        onClick={() => startVitalStreaming('temperature')}
+                        disabled={!isConnected}
+                        className="w-full"
+                      >
+                        <Play className="w-4 h-4 mr-1" />
+                        Start
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => stopVitalStreaming('temperature')}
+                        className="w-full"
+                      >
+                        <Pause className="w-4 h-4 mr-1" />
+                        Stop
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* EKG */}
+                  <div className="flex flex-col p-4 bg-purple-50 rounded-lg border border-purple-200 col-span-2">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Zap className="w-5 h-5 text-purple-600" />
+                      <div className="font-medium text-purple-900">EKG Rhythm</div>
+                    </div>
+                    <div className="text-2xl font-bold text-purple-900 mb-1">{vitals.ekg.rhythm}</div>
+                    <div className="text-xs text-purple-600 mb-3">Electrocardiogram</div>
+                    {!isStreaming.ekg ? (
+                      <Button
+                        size="sm"
+                        onClick={() => startVitalStreaming('ekg')}
+                        disabled={!isConnected}
+                        className="w-full"
+                      >
+                        <Play className="w-4 h-4 mr-1" />
+                        Start
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => stopVitalStreaming('ekg')}
+                        className="w-full"
+                      >
+                        <Pause className="w-4 h-4 mr-1" />
+                        Stop
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
           {/* Real-Time Dashboard */}
           <div className="space-y-6">
-            {/* Live Vitals Display */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Activity className="w-5 h-5" />
-                    Live Vitals Monitor
-                  </div>
-                  {isStreaming && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                      <span className="text-red-600 font-medium">STREAMING</span>
-                    </div>
-                  )}
-                </CardTitle>
-                <CardDescription>Real-time vital signs display</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                    <div className="text-sm text-blue-600 font-medium mb-1">Blood Pressure</div>
-                    <div className="text-3xl font-bold text-blue-900">
-                      {vitals.bloodPressure.systolic}/{vitals.bloodPressure.diastolic}
-                    </div>
-                    <div className="text-xs text-blue-600 mt-1">mmHg</div>
-                  </div>
-
-                  <div className="p-4 bg-red-50 rounded-lg border border-red-200">
-                    <div className="text-sm text-red-600 font-medium mb-1">Heart Rate</div>
-                    <div className="text-3xl font-bold text-red-900">{vitals.heartRate}</div>
-                    <div className="text-xs text-red-600 mt-1">bpm</div>
-                  </div>
-
-                  <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-                    <div className="text-sm text-green-600 font-medium mb-1">SpO2</div>
-                    <div className="text-3xl font-bold text-green-900">{vitals.spO2}%</div>
-                    <div className="text-xs text-green-600 mt-1">Oxygen Saturation</div>
-                  </div>
-
-                  <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-                    <div className="text-sm text-purple-600 font-medium mb-1">Glucose</div>
-                    <div className="text-3xl font-bold text-purple-900">{vitals.glucose}</div>
-                    <div className="text-xs text-purple-600 mt-1">mg/dL</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
 
             {/* ECG Waveform */}
             <Card>
@@ -553,6 +588,12 @@ export default function DeviceSimulator() {
                 <CardTitle className="flex items-center gap-2">
                   <Zap className="w-5 h-5" />
                   ECG Waveform
+                  {isStreaming.ekg && (
+                    <span className="ml-auto text-xs text-red-600 font-medium flex items-center gap-1">
+                      <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                      LIVE
+                    </span>
+                  )}
                 </CardTitle>
                 <CardDescription>Real-time electrocardiogram</CardDescription>
               </CardHeader>
@@ -706,6 +747,40 @@ export default function DeviceSimulator() {
                     </ResponsiveContainer>
                   </div>
                 </div>
+
+                {/* Temperature Chart */}
+                <div>
+                  <h4 className="text-sm font-medium mb-2">Body Temperature</h4>
+                  <div className="h-32">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={vitalHistory.temperature}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis
+                          dataKey="timestamp"
+                          tick={false}
+                          stroke="#9ca3af"
+                        />
+                        <YAxis
+                          domain={[35, 40]}
+                          stroke="#9ca3af"
+                          tick={{ fill: '#6b7280', fontSize: 11 }}
+                        />
+                        <Tooltip
+                          labelFormatter={(value) => new Date(value).toLocaleTimeString()}
+                          formatter={(value: number) => [`${value}°C`, 'Temp']}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="value"
+                          stroke="#f97316"
+                          strokeWidth={2}
+                          dot={false}
+                          isAnimationActive={false}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
@@ -758,11 +833,11 @@ export default function DeviceSimulator() {
                       </div>
                     )}
 
-                    {result.analysis.glucose && (
-                      <div className={`p-4 rounded-lg ${getStatusColor(result.analysis.glucose.status)}`}>
-                        <div className="font-semibold">Blood Glucose</div>
-                        <div className="text-sm mt-1">{result.analysis.glucose.message}</div>
-                        <div className="text-xs mt-2 opacity-75">{vitals.glucose} mg/dL</div>
+                    {result.analysis.temperature && (
+                      <div className={`p-4 rounded-lg ${getStatusColor(result.analysis.temperature.status)}`}>
+                        <div className="font-semibold">Body Temperature</div>
+                        <div className="text-sm mt-1">{result.analysis.temperature.message}</div>
+                        <div className="text-xs mt-2 opacity-75">{vitals.temperature}°C</div>
                       </div>
                     )}
 
@@ -779,7 +854,7 @@ export default function DeviceSimulator() {
                 {!result && !isSending && (
                   <div className="text-center py-12 text-muted-foreground">
                     <Stethoscope className="w-16 h-16 mx-auto mb-4 opacity-20" />
-                    <p>Set vital signs and click &quot;Send to Cloud&quot; to see analysis</p>
+                    <p>Set vital signs and click &quot;Send Single&quot; to see analysis</p>
                   </div>
                 )}
               </CardContent>
