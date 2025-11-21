@@ -12,6 +12,26 @@ export interface VitalSigns {
   };
 }
 
+export interface DiseaseIndicator {
+  condition: string;
+  likelihood: 'low' | 'moderate' | 'high' | 'critical';
+  indicators: string[];
+}
+
+export interface Medication {
+  name: string;
+  dosage: string;
+  frequency: string;
+  duration: string;
+  instructions: string;
+}
+
+export interface Recommendation {
+  type: 'teleconsultation' | 'hospital_referral' | 'follow_up' | 'lifestyle';
+  urgency: 'immediate' | 'urgent' | 'routine';
+  message: string;
+}
+
 export interface DiagnosticResult {
   analysis: {
     bloodPressure?: { status: string; message: string };
@@ -20,6 +40,11 @@ export interface DiagnosticResult {
     temperature?: { status: string; message: string };
     ekg?: { status: string; message: string };
   };
+  summary: string;
+  diseaseIndicators: DiseaseIndicator[];
+  prescriptions: Medication[];
+  recommendations: Recommendation[];
+  overallRisk: 'low' | 'moderate' | 'high' | 'critical';
   processedAt: string;
 }
 
