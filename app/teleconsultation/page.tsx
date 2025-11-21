@@ -12,6 +12,14 @@ declare global {
   }
 }
 
+interface Patient {
+  _id: string;
+  patientId: string;
+  name: string;
+  gender: string;
+  bloodType?: string;
+  contactNumber?: string;
+}
 
 export default function TelemedicinePage() {
   const [isCallActive, setIsCallActive] = useState(false);
@@ -21,6 +29,8 @@ export default function TelemedicinePage() {
   const [newMessage, setNewMessage] = useState('');
   const [jitsiApi, setJitsiApi] = useState<any>(null);
   const jitsiContainerRef = useRef<HTMLDivElement>(null);
+  const [isJitsiLoaded, setIsJitsiLoaded] = useState(false);
+  const scriptRef = useRef<HTMLScriptElement | null>(null);
   
   // Patient state
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -30,17 +40,55 @@ export default function TelemedicinePage() {
   const [loadingPatients, setLoadingPatients] = useState(false);
 
   useEffect(() => {
+    // Check if script is already loaded
+    if (window.JitsiMeetExternalAPI) {
+      setIsJitsiLoaded(true);
+      return;
+    }
+
+    // Check if script already exists in DOM
+    const existingScript = document.querySelector('script[src="https://meet.jit.si/external_api.js"]');
+    if (existingScript) {
+      setIsJitsiLoaded(true);
+      return;
+    }
+
     // Load Jitsi Meet API script
     const script = document.createElement('script');
     script.src = 'https://meet.jit.si/external_api.js';
     script.async = true;
+    scriptRef.current = script;
+    
+    script.onload = () => {
+      console.log('Jitsi Meet API loaded successfully');
+      setIsJitsiLoaded(true);
+    };
+    
+    script.onerror = (error) => {
+      console.error('Failed to load Jitsi Meet API:', error);
+      setIsJitsiLoaded(false);
+    };
+    
     document.body.appendChild(script);
 
     return () => {
+      // Cleanup Jitsi API instance
       if (jitsiApi) {
-        jitsiApi.dispose();
+        try {
+          jitsiApi.dispose();
+        } catch (e) {
+          console.error('Error disposing Jitsi API:', e);
+        }
       }
-      document.body.removeChild(script);
+      
+      // Only remove script if it exists and we created it
+      if (scriptRef.current && document.body.contains(scriptRef.current)) {
+        try {
+          document.body.removeChild(scriptRef.current);
+        } catch (e) {
+          console.error('Error removing script:', e);
+        }
+      }
     };
   }, []);
 
@@ -91,54 +139,104 @@ export default function TelemedicinePage() {
       return;
     }
     
-    if (!jitsiContainerRef.current || !window.JitsiMeetExternalAPI) {
-      alert('Jitsi Meet is loading. Please try again in a moment.');
+    if (!isJitsiLoaded || !window.JitsiMeetExternalAPI) {
+      alert('Jitsi Meet is still loading. Please wait a moment and try again.');
       return;
     }
 
-    const domain = 'meet.jit.si';
-    const options = {
-      roomName: `DjajaConsultation${Date.now()}`,
-      width: '100%',
-      height: '100%',
-      parentNode: jitsiContainerRef.current,
-      configOverwrite: {
-        startWithAudioMuted: false,
-        startWithVideoMuted: false,
-        enableWelcomePage: false,
-      },
-      interfaceConfigOverwrite: {
-        TOOLBAR_BUTTONS: [
-          'microphone',
-          'camera',
-          'closedcaptions',
-          'desktop',
-          'fullscreen',
-          'fodeviceselection',
-          'hangup',
-          'chat',
-          'settings',
-          'videoquality',
-          'filmstrip',
-          'stats',
-          'shortcuts',
-          'tileview',
-        ],
-      },
-    };
-
-    const api = new window.JitsiMeetExternalAPI(domain, options);
-    setJitsiApi(api);
+    // Set call active first to render the container
     setIsCallActive(true);
 
-    api.addEventListener('videoConferenceLeft', () => {
-      endCall();
-    });
+    // Wait for container to be rendered, then initialize Jitsi
+    setTimeout(() => {
+      if (!jitsiContainerRef.current) {
+        alert('Video container not ready. Please try again.');
+        setIsCallActive(false);
+        return;
+      }
+
+      initializeJitsiCall();
+    }, 100);
+  };
+
+  const initializeJitsiCall = () => {
+    if (!jitsiContainerRef.current || !selectedPatient) return;
+
+    try {
+      const domain = '8x8.vc';
+      const roomName = `Djaja${Date.now()}`;
+      
+      const options = {
+        roomName: roomName,
+        width: '100%',
+        height: '100%',
+        parentNode: jitsiContainerRef.current,
+        configOverwrite: {
+          startWithAudioMuted: true,
+          startWithVideoMuted: true,
+          enableWelcomePage: false,
+          prejoinPageEnabled: false,
+          // Disable lobby/waiting room - allow anyone to join
+          lobbyEnabled: false,
+          enableLobbyChat: false,
+          // Require display name but no authentication
+          requireDisplayName: false,
+        },
+        interfaceConfigOverwrite: {
+          TOOLBAR_BUTTONS: [
+            'microphone',
+            'camera',
+            'closedcaptions',
+            'desktop',
+            'fullscreen',
+            'fodeviceselection',
+            'hangup',
+            'chat',
+            'settings',
+            'videoquality',
+            'filmstrip',
+            'stats',
+            'shortcuts',
+            'tileview',
+          ],
+          ENABLE_LOBBY_MODE: false,
+        },
+        userInfo: {
+          displayName: `Dr. ${localStorage.getItem('userName') || 'Doctor'}`,
+        },
+      };
+
+      const api = new window.JitsiMeetExternalAPI(domain, options);
+      
+      api.addEventListener('videoConferenceJoined', () => {
+        console.log('Successfully joined conference:', roomName);
+      });
+      
+      api.addEventListener('videoConferenceLeft', () => {
+        console.log('Left conference');
+        endCall();
+      });
+
+      api.addEventListener('readyToClose', () => {
+        endCall();
+      });
+
+      setJitsiApi(api);
+      console.log('Jitsi API initialized successfully');
+    } catch (error) {
+      console.error('Error starting Jitsi call:', error);
+      alert('Failed to start video call. Please try again.');
+      setIsCallActive(false);
+    }
   };
 
   const endCall = () => {
     if (jitsiApi) {
-      jitsiApi.dispose();
+      try {
+        jitsiApi.dispose();
+      } catch (e) {
+        console.error('Error disposing Jitsi API:', e);
+      }
       setJitsiApi(null);
     }
     setIsCallActive(false);
@@ -148,15 +246,23 @@ export default function TelemedicinePage() {
 
   const toggleMute = () => {
     if (jitsiApi) {
-      jitsiApi.executeCommand('toggleAudio');
-      setIsMuted(!isMuted);
+      try {
+        jitsiApi.executeCommand('toggleAudio');
+        setIsMuted(!isMuted);
+      } catch (e) {
+        console.error('Error toggling mute:', e);
+      }
     }
   };
 
   const toggleVideo = () => {
     if (jitsiApi) {
-      jitsiApi.executeCommand('toggleVideo');
-      setIsVideoOff(!isVideoOff);
+      try {
+        jitsiApi.executeCommand('toggleVideo');
+        setIsVideoOff(!isVideoOff);
+      } catch (e) {
+        console.error('Error toggling video:', e);
+      }
     }
   };
 
@@ -189,6 +295,9 @@ export default function TelemedicinePage() {
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-primary mb-2">Telemedicine Consultation</h1>
           <p className="text-muted-foreground">Remote patient consultation with video conferencing</p>
+          {!isJitsiLoaded && (
+            <p className="text-sm text-amber-600 mt-2">⏳ Loading video conferencing system...</p>
+          )}
         </div>
 
         {/* Patient Selection */}
@@ -310,12 +419,20 @@ export default function TelemedicinePage() {
                         ? 'Click the button below to start a secure video consultation with your patient'
                         : 'Please select a patient first to start a consultation'}
                     </p>
-                    <Button onClick={startCall} size="lg" className="gap-2" disabled={!selectedPatient}>
+                    <Button 
+                      onClick={startCall} 
+                      size="lg" 
+                      className="gap-2" 
+                      disabled={!selectedPatient || !isJitsiLoaded}
+                    >
                       <Phone className="w-5 h-5" />
-                      Start Video Call
+                      {isJitsiLoaded ? 'Start Video Call' : 'Loading...'}
                     </Button>
                     {!selectedPatient && (
                       <p className="text-sm text-amber-600 mt-4">⚠️ Patient selection is required</p>
+                    )}
+                    {!isJitsiLoaded && selectedPatient && (
+                      <p className="text-sm text-amber-600 mt-4">⏳ Please wait for video system to load</p>
                     )}
                   </div>
                 ) : (
@@ -427,7 +544,8 @@ export default function TelemedicinePage() {
                         <div className="text-xs text-muted-foreground mt-1">{msg.time}</div>
                       </div>
                     ))
-                  )}
+                  )
+                  }
                 </div>
                 <div className="p-4 border-t">
                   <div className="flex gap-2">
