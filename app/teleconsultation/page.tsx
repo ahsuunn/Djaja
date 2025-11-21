@@ -4,12 +4,23 @@ import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Video, MessageSquare, Phone, PhoneOff, Mic, MicOff, VideoOff, Upload, Send } from 'lucide-react';
+import { Video, MessageSquare, Phone, PhoneOff, Mic, MicOff, VideoOff, Upload, Send, User, Search, UserPlus, CheckCircle2, X } from 'lucide-react';
 
 declare global {
   interface Window {
     JitsiMeetExternalAPI: any;
   }
+}
+
+interface Patient {
+  _id: string;
+  patientId: string;
+  name: string;
+  dateOfBirth: string;
+  gender: string;
+  bloodType?: string;
+  contactNumber?: string;
+  address?: string;
 }
 
 export default function TelemedicinePage() {
@@ -20,6 +31,13 @@ export default function TelemedicinePage() {
   const [newMessage, setNewMessage] = useState('');
   const [jitsiApi, setJitsiApi] = useState<any>(null);
   const jitsiContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Patient state
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [patientSearchTerm, setPatientSearchTerm] = useState('');
+  const [showPatientList, setShowPatientList] = useState(false);
+  const [loadingPatients, setLoadingPatients] = useState(false);
 
   useEffect(() => {
     // Load Jitsi Meet API script
@@ -36,7 +54,53 @@ export default function TelemedicinePage() {
     };
   }, []);
 
+  // Fetch patients on mount
+  useEffect(() => {
+    fetchPatients();
+  }, []);
+
+  const fetchPatients = async () => {
+    try {
+      setLoadingPatients(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.error('No auth token found');
+        return;
+      }
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${apiUrl}/api/patients`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch patients');
+      }
+
+      const data = await response.json();
+      setPatients(data.patients || []);
+    } catch (error) {
+      console.error('Fetch patients error:', error);
+    } finally {
+      setLoadingPatients(false);
+    }
+  };
+
+  const filteredPatients = patients.filter(
+    (p) =>
+      p.name.toLowerCase().includes(patientSearchTerm.toLowerCase()) ||
+      p.patientId.toLowerCase().includes(patientSearchTerm.toLowerCase())
+  );
+
   const startCall = () => {
+    if (!selectedPatient) {
+      alert('Please select a patient before starting a consultation.');
+      return;
+    }
+    
     if (!jitsiContainerRef.current || !window.JitsiMeetExternalAPI) {
       alert('Jitsi Meet is loading. Please try again in a moment.');
       return;
@@ -137,6 +201,102 @@ export default function TelemedicinePage() {
           <p className="text-muted-foreground">Remote patient consultation with video conferencing</p>
         </div>
 
+        {/* Patient Selection */}
+        <Card className="mb-8 border-2 border-primary/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <User className="w-5 h-5" />
+              Patient Selection
+            </CardTitle>
+            <CardDescription>
+              Select a patient for the telemedicine consultation
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-4 items-start">
+              <div className="flex-1 relative">
+                <div className="relative">
+                  <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search patients by name or ID..."
+                    value={patientSearchTerm}
+                    onChange={(e) => {
+                      setPatientSearchTerm(e.target.value);
+                      setShowPatientList(true);
+                    }}
+                    onFocus={() => setShowPatientList(true)}
+                    className="pl-10"
+                  />
+                </div>
+                
+                {showPatientList && patientSearchTerm && (
+                  <div className="absolute z-10 w-full mt-2 bg-white border rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                    {loadingPatients ? (
+                      <div className="p-4 text-center text-muted-foreground">Loading patients...</div>
+                    ) : filteredPatients.length === 0 ? (
+                      <div className="p-4 text-center text-muted-foreground">No patients found</div>
+                    ) : (
+                      filteredPatients.map((patient) => (
+                        <button
+                          key={patient._id}
+                          onClick={() => {
+                            setSelectedPatient(patient);
+                            setPatientSearchTerm('');
+                            setShowPatientList(false);
+                          }}
+                          className="w-full p-3 text-left hover:bg-muted transition-colors border-b last:border-b-0"
+                        >
+                          <div className="font-medium">{patient.name}</div>
+                          <div className="text-sm text-muted-foreground">
+                            ID: {patient.patientId} | {patient.gender} | {patient.bloodType || 'N/A'}
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              <Button
+                onClick={() => window.open('/patients', '_blank')}
+                variant="outline"
+                className="flex-shrink-0"
+              >
+                <UserPlus className="w-4 h-4 mr-2" />
+                Add Patient
+              </Button>
+            </div>
+
+            {/* Selected Patient Display */}
+            {selectedPatient ? (
+              <div className="mt-4 p-4 bg-primary/5 border border-primary/20 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-green-600" />
+                    <div>
+                      <div className="font-semibold">{selectedPatient.name}</div>
+                      <div className="text-sm text-muted-foreground">
+                        ID: {selectedPatient.patientId} | {selectedPatient.gender} | {selectedPatient.bloodType || 'N/A'}
+                      </div>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => setSelectedPatient(null)}
+                    variant="ghost"
+                    size="sm"
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 p-4 bg-muted/50 border border-dashed rounded-lg text-center text-muted-foreground">
+                ⚠️ Please select a patient before starting a consultation
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Video Call Area */}
           <div className="lg:col-span-2">
@@ -156,12 +316,17 @@ export default function TelemedicinePage() {
                     <Video className="w-24 h-24 mb-6 text-muted-foreground opacity-20" />
                     <h3 className="text-xl font-semibold mb-2">Ready to Start Consultation</h3>
                     <p className="text-muted-foreground mb-6 text-center max-w-md">
-                      Click the button below to start a secure video consultation with your patient
+                      {selectedPatient 
+                        ? 'Click the button below to start a secure video consultation with your patient'
+                        : 'Please select a patient first to start a consultation'}
                     </p>
-                    <Button onClick={startCall} size="lg" className="gap-2">
+                    <Button onClick={startCall} size="lg" className="gap-2" disabled={!selectedPatient}>
                       <Phone className="w-5 h-5" />
                       Start Video Call
                     </Button>
+                    {!selectedPatient && (
+                      <p className="text-sm text-amber-600 mt-4">⚠️ Patient selection is required</p>
+                    )}
                   </div>
                 ) : (
                   <div className="h-full flex flex-col">
@@ -203,25 +368,40 @@ export default function TelemedicinePage() {
                 <CardTitle>Patient Information</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div>
-                  <div className="text-sm text-muted-foreground">Name</div>
-                  <div className="font-medium">Budi Santoso</div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">Patient ID</div>
-                  <div className="font-medium">PT-2025-001</div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">Age / Gender</div>
-                  <div className="font-medium">40 years / Male</div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">Last Visit</div>
-                  <div className="font-medium">2025-11-10</div>
-                </div>
-                <Button className="w-full mt-4" variant="outline">
-                  View Full Medical Record
-                </Button>
+                {selectedPatient ? (
+                  <>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Name</div>
+                      <div className="font-medium">{selectedPatient.name}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Patient ID</div>
+                      <div className="font-medium">{selectedPatient.patientId}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Gender</div>
+                      <div className="font-medium">{selectedPatient.gender}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Blood Type</div>
+                      <div className="font-medium">{selectedPatient.bloodType || 'N/A'}</div>
+                    </div>
+                    {selectedPatient.contactNumber && (
+                      <div>
+                        <div className="text-sm text-muted-foreground">Contact</div>
+                        <div className="font-medium">{selectedPatient.contactNumber}</div>
+                      </div>
+                    )}
+                    <Button className="w-full mt-4" variant="outline">
+                      View Full Medical Record
+                    </Button>
+                  </>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <User className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                    <p className="text-sm">No patient selected</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
