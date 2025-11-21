@@ -237,16 +237,6 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
-
-        {/* Quick Actions */}
-        <div className="mt-8 flex gap-4 justify-center">
-          <Button onClick={() => window.location.href = '/device-simulator'}>
-            Open Device Simulator
-          </Button>
-          <Button variant="outline" onClick={fetchDashboardData}>
-            Refresh Data
-          </Button>
-        </div>
       </div>
     </div>
   );
