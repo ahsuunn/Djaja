@@ -96,9 +96,11 @@ export default function Navbar() {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-4">
+            { !isLoggedIn && (
             <Link href="/">
               <Button variant="ghost" className={pathname === '/' ? 'bg-primary/10 text-primary' : ''}>Home</Button>
-            </Link>
+            </Link>)
+            }
             {isLoggedIn && (
               <>
                 {userRole !== 'doctor' && (
