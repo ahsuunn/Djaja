@@ -189,19 +189,25 @@ export default function DeviceSimulator() {
     });
   };
 
-  // Helper randomization helpers
-  const vary = (value: number, range: number) => Math.round(value + (Math.random() - 0.5) * range);
-  const varyDecimal = (value: number, range: number) => Math.round((value + (Math.random() - 0.5) * range) * 10) / 10;
+  // Helper randomization helpers with bounds
+  const vary = (value: number, range: number, min: number, max: number) => {
+    const varied = Math.round(value + (Math.random() - 0.5) * range);
+    return Math.max(min, Math.min(max, varied));
+  };
+  const varyDecimal = (value: number, range: number, min: number, max: number) => {
+    const varied = Math.round((value + (Math.random() - 0.5) * range) * 10) / 10;
+    return Math.max(min, Math.min(max, varied));
+  };
 
   // Generate realistic vital variations for all vitals (keeps existing behaviour)
   const generateRealisticVitals = (baseVitals: VitalSigns): VitalSigns => ({
     bloodPressure: {
-      systolic: vary(baseVitals.bloodPressure.systolic, 5),
-      diastolic: vary(baseVitals.bloodPressure.diastolic, 3),
+      systolic: vary(baseVitals.bloodPressure.systolic, 5, 70, 220),
+      diastolic: vary(baseVitals.bloodPressure.diastolic, 3, 40, 130),
     },
-    heartRate: vary(baseVitals.heartRate, 3),
-    spO2: Math.min(100, vary(baseVitals.spO2, 1)),
-    temperature: varyDecimal(baseVitals.temperature, 0.2),
+    heartRate: vary(baseVitals.heartRate, 3, 40, 200),
+    spO2: vary(baseVitals.spO2, 1, 70, 100),
+    temperature: varyDecimal(baseVitals.temperature, 0.2, 35.0, 42.0),
     ekg: baseVitals.ekg,
   });
 
@@ -215,17 +221,17 @@ export default function DeviceSimulator() {
 
     switch (vitalType) {
       case 'bloodPressure':
-        bp.systolic = vary(bp.systolic, 5);
-        bp.diastolic = vary(bp.diastolic, 3);
+        bp.systolic = vary(bp.systolic, 5, 70, 220);
+        bp.diastolic = vary(bp.diastolic, 3, 40, 130);
         break;
       case 'heartRate':
-        hr = vary(hr, 3);
+        hr = vary(hr, 3, 40, 200);
         break;
       case 'spO2':
-        spo2 = Math.min(100, vary(spo2, 1));
+        spo2 = vary(spo2, 1, 70, 100);
         break;
       case 'temperature':
-        temp = varyDecimal(temp, 0.2);
+        temp = varyDecimal(temp, 0.2, 35.0, 42.0);
         break;
       default:
         break;
@@ -529,6 +535,47 @@ export default function DeviceSimulator() {
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Device Controls */}
           <div className="space-y-6">
+            {/* Global Controls */}
+            <Card className="border-2 border-primary/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Wifi className="w-5 h-5" />
+                  Global Settings
+                </CardTitle>
+                <CardDescription>Configure streaming interval and generate test data</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium">Stream Interval (ms)</label>
+                  <Input
+                    type="number"
+                    value={streamInterval}
+                    onChange={(e) => setStreamInterval(Number(e.target.value))}
+                    min="500"
+                    max="10000"
+                    step="500"
+                    disabled={anyStreaming}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Data sent every {streamInterval / 1000} seconds
+                  </p>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button onClick={generateRandomVitals} variant="outline" className="flex-1" disabled={anyStreaming}>
+                    Generate Random
+                  </Button>
+                  <Button
+                    onClick={() => sendToCloud()}
+                    disabled={!isConnected || isSending || anyStreaming}
+                    className="flex-1"
+                  >
+                    {isSending ? 'Processing...' : 'Send Single'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Individual Vital Streaming Controls */}
             <div className="space-y-4">
               {/* Blood Pressure */}
