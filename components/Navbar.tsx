@@ -114,8 +114,8 @@ export default function Navbar() {
                 <Link href="/patients">
                   <Button variant="ghost" className={pathname === '/patients' ? 'bg-primary/10 text-primary' : ''}>Medical Records</Button>
                 </Link>
-                <Link href="/telemedicine">
-                  <Button variant="ghost" className={pathname === '/telemedicine' ? 'bg-primary/10 text-primary' : ''}>Telemedicine</Button>
+                <Link href="/teleconsultation">
+                  <Button variant="ghost" className={pathname === '/teleconsultation' ? 'bg-primary/10 text-primary' : ''}>Teleconsultation</Button>
                 </Link>
               </>
             )}
@@ -194,9 +194,9 @@ export default function Navbar() {
                     Medical Records
                   </Button>
                 </Link>
-                <Link href="/telemedicine" onClick={() => setIsOpen(false)}>
-                  <Button variant="ghost" className={`w-full justify-start ${pathname === '/telemedicine' ? 'bg-primary/10 text-primary' : ''}`}>
-                    Telemedicine
+                <Link href="/teleconsultation" onClick={() => setIsOpen(false)}>
+                  <Button variant="ghost" className={`w-full justify-start ${pathname === '/teleconsultation' ? 'bg-primary/10 text-primary' : ''}`}>
+                    Teleconsultation
                   </Button>
                 </Link>
               </>

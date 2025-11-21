@@ -31,7 +31,7 @@ export default function Home() {
           />
           <FeatureCard
             icon={<Users className="w-8 h-8" />}
-            title="Telemedicine"
+            title="Teleconsultation"
             description="Remote consultation system"
           />
           <FeatureCard
