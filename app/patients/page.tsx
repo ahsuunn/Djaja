@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Users, FileText, Download, Search, AlertCircle, Loader2, RefreshCcw, RefreshCcwIcon } from 'lucide-react';
+import { Users, FileText, Download, Search, AlertCircle, Loader2, RefreshCcw, RefreshCcwIcon, Plus, X } from 'lucide-react';
 
 interface Patient {
   _id: string;
@@ -36,6 +36,25 @@ export default function PatientsPage() {
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    dateOfBirth: '',
+    gender: '',
+    phoneNumber: '',
+    bloodType: '',
+    allergies: '',
+    medicalHistory: '',
+    currentMedications: '',
+    street: '',
+    city: '',
+    province: '',
+    postalCode: '',
+    emergencyContactName: '',
+    emergencyContactRelationship: '',
+    emergencyContactPhone: '',
+  });
 
   useEffect(() => {
     fetchPatients();
@@ -80,6 +99,92 @@ export default function PatientsPage() {
       patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       patient.patientId.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setError('');
+
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Please log in to add patients');
+        setSubmitting(false);
+        return;
+      }
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      
+      // Prepare patient data
+      const patientData = {
+        name: formData.name,
+        dateOfBirth: formData.dateOfBirth,
+        gender: formData.gender,
+        phoneNumber: formData.phoneNumber,
+        bloodType: formData.bloodType,
+        allergies: formData.allergies ? formData.allergies.split(',').map(a => a.trim()) : [],
+        medicalHistory: formData.medicalHistory ? formData.medicalHistory.split(',').map(h => h.trim()) : [],
+        currentMedications: formData.currentMedications ? formData.currentMedications.split(',').map(m => m.trim()) : [],
+        address: {
+          street: formData.street,
+          city: formData.city,
+          province: formData.province,
+          postalCode: formData.postalCode,
+        },
+        emergencyContact: {
+          name: formData.emergencyContactName,
+          relationship: formData.emergencyContactRelationship,
+          phoneNumber: formData.emergencyContactPhone,
+        },
+      };
+
+      const response = await fetch(`${apiUrl}/api/patients`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(patientData),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add patient');
+      }
+
+      // Reset form and close modal
+      setFormData({
+        name: '',
+        dateOfBirth: '',
+        gender: '',
+        phoneNumber: '',
+        bloodType: '',
+        allergies: '',
+        medicalHistory: '',
+        currentMedications: '',
+        street: '',
+        city: '',
+        province: '',
+        postalCode: '',
+        emergencyContactName: '',
+        emergencyContactRelationship: '',
+        emergencyContactPhone: '',
+      });
+      setShowAddModal(false);
+      
+      // Refresh patient list
+      await fetchPatients();
+    } catch (error) {
+      console.error('Add patient error:', error);
+      setError(error instanceof Error ? error.message : 'Failed to add patient');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const exportFHIR = (patient: Patient) => {
     const fhirPatient = {
@@ -126,10 +231,16 @@ export default function PatientsPage() {
             <h1 className="text-4xl font-bold text-primary mb-2">Electronic Medical Records</h1>
             <p className="text-muted-foreground">Patient demographics and medical history management</p>
           </div>
-          <Button onClick={fetchPatients} variant="outline" disabled={loading}>
-            {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-            Refresh
-          </Button>
+          <div className="flex gap-3">
+            <Button onClick={() => setShowAddModal(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Patient
+            </Button>
+            <Button onClick={fetchPatients} variant="outline" disabled={loading}>
+              {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Refresh
+            </Button>
+          </div>
         </div>
 
         {/* Error Alert */}
@@ -380,6 +491,244 @@ export default function PatientsPage() {
         </div>
         )}
       </div>
+
+      {/* Add Patient Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-8 z-50">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b p-6 flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-primary">Add New Patient</h2>
+                <p className="text-sm text-muted-foreground">Fill in patient demographic and medical information</p>
+              </div>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="p-6 space-y-8">
+              {/* Basic Information */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Basic Information</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Full Name *</label>
+                    <Input
+                      name="name"
+                      value={formData.name}
+                      onChange={handleInputChange}
+                      placeholder="John Doe"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Date of Birth *</label>
+                    <Input
+                      type="date"
+                      name="dateOfBirth"
+                      value={formData.dateOfBirth}
+                      onChange={handleInputChange}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Gender *</label>
+                    <select
+                      name="gender"
+                      value={formData.gender}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border rounded-lg"
+                      required
+                    >
+                      <option value="">Select gender</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Phone Number *</label>
+                    <Input
+                      type="tel"
+                      name="phoneNumber"
+                      value={formData.phoneNumber}
+                      onChange={handleInputChange}
+                      placeholder="+62 812 3456 7890"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Blood Type *</label>
+                    <select
+                      name="bloodType"
+                      value={formData.bloodType}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border rounded-lg"
+                      required
+                    >
+                      <option value="">Select blood type</option>
+                      <option value="A+">A+</option>
+                      <option value="A-">A-</option>
+                      <option value="B+">B+</option>
+                      <option value="B-">B-</option>
+                      <option value="AB+">AB+</option>
+                      <option value="AB-">AB-</option>
+                      <option value="O+">O+</option>
+                      <option value="O-">O-</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Address */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Address</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium mb-2">Street Address</label>
+                    <Input
+                      name="street"
+                      value={formData.street}
+                      onChange={handleInputChange}
+                      placeholder="Jl. Example No. 123"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">City</label>
+                    <Input
+                      name="city"
+                      value={formData.city}
+                      onChange={handleInputChange}
+                      placeholder="Jakarta"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Province</label>
+                    <Input
+                      name="province"
+                      value={formData.province}
+                      onChange={handleInputChange}
+                      placeholder="DKI Jakarta"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Postal Code</label>
+                    <Input
+                      name="postalCode"
+                      value={formData.postalCode}
+                      onChange={handleInputChange}
+                      placeholder="12345"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Medical Information */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Medical Information</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Allergies</label>
+                    <Input
+                      name="allergies"
+                      value={formData.allergies}
+                      onChange={handleInputChange}
+                      placeholder="Penicillin, Peanuts (comma-separated)"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Separate multiple allergies with commas</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Medical History</label>
+                    <textarea
+                      name="medicalHistory"
+                      value={formData.medicalHistory}
+                      onChange={handleInputChange}
+                      placeholder="Hypertension, Diabetes (comma-separated)"
+                      className="w-full px-3 py-2 border rounded-lg resize-none"
+                      rows={3}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Separate multiple conditions with commas</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Current Medications</label>
+                    <textarea
+                      name="currentMedications"
+                      value={formData.currentMedications}
+                      onChange={handleInputChange}
+                      placeholder="Lisinopril 10mg daily, Metformin 500mg twice daily (comma-separated)"
+                      className="w-full px-3 py-2 border rounded-lg resize-none"
+                      rows={3}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Separate multiple medications with commas</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Emergency Contact */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Emergency Contact</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Contact Name</label>
+                    <Input
+                      name="emergencyContactName"
+                      value={formData.emergencyContactName}
+                      onChange={handleInputChange}
+                      placeholder="Jane Doe"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Relationship</label>
+                    <Input
+                      name="emergencyContactRelationship"
+                      value={formData.emergencyContactRelationship}
+                      onChange={handleInputChange}
+                      placeholder="Spouse, Parent, Sibling"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Phone Number</label>
+                    <Input
+                      type="tel"
+                      name="emergencyContactPhone"
+                      value={formData.emergencyContactPhone}
+                      onChange={handleInputChange}
+                      placeholder="+62 812 9876 5432"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="flex gap-3 justify-end pt-4 border-t">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowAddModal(false)}
+                  disabled={submitting}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={submitting}>
+                  {submitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Adding Patient...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Patient
+                    </>
+                  )}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
