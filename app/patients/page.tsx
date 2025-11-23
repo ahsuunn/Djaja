@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { getPatients, createPatient, getPatientObservations } from '@/lib/api-client';
@@ -76,7 +76,7 @@ interface Observation {
   createdAt: string;
 }
 
-export default function PatientsPage() {
+function PatientsPageContent() {
   const searchParams = useSearchParams();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1491,5 +1491,22 @@ export default function PatientsPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+export default function PatientsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            <span className="ml-3 text-muted-foreground">Loading patients...</span>
+          </div>
+        </div>
+      </div>
+    }>
+      <PatientsPageContent />
+    </Suspense>
   );
 }
