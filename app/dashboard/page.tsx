@@ -224,7 +224,7 @@ export default function Dashboard() {
               {[
                 { name: 'BP Monitor', status: 'online', id: 'BP-001' },
                 { name: 'Heart Rate', status: 'online', id: 'HR-001' },
-                { name: 'Glucometer', status: 'online', id: 'GLU-001' },
+                { name: 'Stethoscope', status: 'online', id: 'ST-001' },
                 { name: 'Pulse Oximeter', status: 'maintenance', id: 'SPO2-001' },
                 { name: 'EKG Machine', status: 'online', id: 'EKG-001' },
               ].map((device) => (
