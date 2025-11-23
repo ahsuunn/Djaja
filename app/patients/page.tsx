@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Users, FileText, Download, Search, AlertCircle, Loader2, RefreshCcw, RefreshCcwIcon, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -43,18 +44,45 @@ export default function PatientsPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
+    // FHIR Identifiers
+    nik: '',
+    ihsNumber: '',
+    passportNumber: '',
+    kk: '',
+    // Basic Info
     name: '',
+    familyName: '',
+    givenNames: '',
+    prefix: '',
+    suffix: '',
     dateOfBirth: '',
     gender: '',
     phoneNumber: '',
+    email: '',
     bloodType: '',
+    // FHIR Extensions
+    birthPlace: '',
+    citizenshipStatus: 'WNI',
+    religion: '',
+    maritalStatus: '',
+    education: '',
+    occupation: '',
+    // Address
+    street: '',
+    city: '',
+    district: '',
+    province: '',
+    postalCode: '',
+    rt: '',
+    rw: '',
+    provinceCode: '',
+    cityCode: '',
+    districtCode: '',
+    // Medical Info
     allergies: '',
     medicalHistory: '',
     currentMedications: '',
-    street: '',
-    city: '',
-    province: '',
-    postalCode: '',
+    // Emergency Contact
     emergencyContactName: '',
     emergencyContactRelationship: '',
     emergencyContactPhone: '',
@@ -132,27 +160,117 @@ export default function PatientsPage() {
 
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
       
-      // Prepare patient data
+      // Prepare patient data with FHIR structure
       const patientData = {
+        // FHIR Identifiers
+        nik: formData.nik,
+        ihsNumber: formData.ihsNumber,
+        passportNumber: formData.passportNumber,
+        kk: formData.kk,
+        // Basic Info (backward compatibility)
         name: formData.name,
         dateOfBirth: formData.dateOfBirth,
         gender: formData.gender,
         phoneNumber: formData.phoneNumber,
         bloodType: formData.bloodType,
-        allergies: formData.allergies ? formData.allergies.split(',').map(a => a.trim()) : [],
-        medicalHistory: formData.medicalHistory ? formData.medicalHistory.split(',').map(h => h.trim()) : [],
-        currentMedications: formData.currentMedications ? formData.currentMedications.split(',').map(m => m.trim()) : [],
+        // FHIR names array
+        names: [{
+          use: 'official',
+          text: formData.name,
+          family: formData.familyName || formData.name.split(' ').pop(),
+          given: formData.givenNames ? formData.givenNames.split(' ') : formData.name.split(' ').slice(0, -1),
+          prefix: formData.prefix ? [formData.prefix] : [],
+          suffix: formData.suffix ? [formData.suffix] : [],
+        }],
+        // FHIR telecoms array
+        telecoms: [
+          {
+            system: 'phone',
+            value: formData.phoneNumber,
+            use: 'mobile',
+            rank: 1,
+          },
+          ...(formData.email ? [{
+            system: 'email',
+            value: formData.email,
+            use: 'home',
+            rank: 2,
+          }] : []),
+        ],
+        // FHIR addresses array with administrative codes
+        addresses: [{
+          use: 'home',
+          type: 'physical',
+          text: `${formData.street}, RT ${formData.rt}/RW ${formData.rw}, ${formData.district}, ${formData.city}, ${formData.province}`,
+          line: formData.street ? [formData.street] : [],
+          city: formData.city,
+          district: formData.district,
+          state: formData.province,
+          postalCode: formData.postalCode,
+          country: 'Indonesia',
+          extension: [{
+            url: 'https://fhir.kemkes.go.id/r4/StructureDefinition/administrativeCode',
+            extension: [
+              ...(formData.provinceCode ? [{ url: 'province', valueCode: formData.provinceCode }] : []),
+              ...(formData.cityCode ? [{ url: 'city', valueCode: formData.cityCode }] : []),
+              ...(formData.districtCode ? [{ url: 'district', valueCode: formData.districtCode }] : []),
+              ...(formData.rt ? [{ url: 'rt', valueCode: formData.rt }] : []),
+              ...(formData.rw ? [{ url: 'rw', valueCode: formData.rw }] : []),
+            ],
+          }],
+        }],
+        // Legacy address (backward compatibility)
         address: {
           street: formData.street,
           city: formData.city,
           province: formData.province,
           postalCode: formData.postalCode,
         },
+        // FHIR contacts array
+        contacts: formData.emergencyContactName ? [{
+          relationship: [{
+            coding: [{
+              system: 'http://terminology.hl7.org/CodeSystem/v2-0131',
+              code: 'C',
+              display: formData.emergencyContactRelationship || 'Emergency Contact',
+            }],
+            text: formData.emergencyContactRelationship,
+          }],
+          name: {
+            text: formData.emergencyContactName,
+          },
+          telecom: [{
+            system: 'phone',
+            value: formData.emergencyContactPhone,
+            use: 'mobile',
+          }],
+        }] : [],
+        // Legacy emergency contact (backward compatibility)
         emergencyContact: {
           name: formData.emergencyContactName,
           relationship: formData.emergencyContactRelationship,
           phoneNumber: formData.emergencyContactPhone,
         },
+        // FHIR Extensions
+        extension: [
+          ...(formData.birthPlace ? [{ url: 'https://fhir.kemkes.go.id/r4/StructureDefinition/birthPlace', valueString: formData.birthPlace }] : []),
+          { url: 'https://fhir.kemkes.go.id/r4/StructureDefinition/citizenshipStatus', valueCode: formData.citizenshipStatus },
+          ...(formData.religion ? [{ url: 'https://fhir.kemkes.go.id/r4/StructureDefinition/religion', valueCode: formData.religion }] : []),
+          ...(formData.education ? [{ url: 'https://fhir.kemkes.go.id/r4/StructureDefinition/education', valueString: formData.education }] : []),
+          ...(formData.occupation ? [{ url: 'https://fhir.kemkes.go.id/r4/StructureDefinition/occupation', valueString: formData.occupation }] : []),
+        ],
+        // Marital status
+        maritalStatus: formData.maritalStatus ? {
+          coding: [{
+            system: 'http://terminology.hl7.org/CodeSystem/v3-MaritalStatus',
+            code: formData.maritalStatus,
+            display: formData.maritalStatus,
+          }],
+        } : undefined,
+        // Medical data
+        allergies: formData.allergies ? formData.allergies.split(',').map(a => a.trim()) : [],
+        medicalHistory: formData.medicalHistory ? formData.medicalHistory.split(',').map(h => h.trim()) : [],
+        currentMedications: formData.currentMedications ? formData.currentMedications.split(',').map(m => m.trim()) : [],
       };
 
       const response = await fetch(`${apiUrl}/api/patients`, {
@@ -170,18 +288,39 @@ export default function PatientsPage() {
 
       // Reset form and close modal
       setFormData({
+        nik: '',
+        ihsNumber: '',
+        passportNumber: '',
+        kk: '',
         name: '',
+        familyName: '',
+        givenNames: '',
+        prefix: '',
+        suffix: '',
         dateOfBirth: '',
         gender: '',
         phoneNumber: '',
+        email: '',
         bloodType: '',
+        birthPlace: '',
+        citizenshipStatus: 'WNI',
+        religion: '',
+        maritalStatus: '',
+        education: '',
+        occupation: '',
+        street: '',
+        city: '',
+        district: '',
+        province: '',
+        postalCode: '',
+        rt: '',
+        rw: '',
+        provinceCode: '',
+        cityCode: '',
+        districtCode: '',
         allergies: '',
         medicalHistory: '',
         currentMedications: '',
-        street: '',
-        city: '',
-        province: '',
-        postalCode: '',
         emergencyContactName: '',
         emergencyContactRelationship: '',
         emergencyContactPhone: '',
@@ -741,18 +880,105 @@ export default function PatientsPage() {
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-8 px-6 pb-6 overflow-y-auto dialog-scroll" style={{ maxHeight: 'calc(90vh - 120px)' }}>
+              {/* FHIR Identifiers */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Identifiers (FHIR)</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">NIK (Nomor Induk Kependudukan) *</label>
+                    <Input
+                      name="nik"
+                      value={formData.nik}
+                      onChange={handleInputChange}
+                      placeholder="3201234567890123"
+                      maxLength={16}
+                      required
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Indonesian National ID (16 digits)</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">IHS Number</label>
+                    <Input
+                      name="ihsNumber"
+                      value={formData.ihsNumber}
+                      onChange={handleInputChange}
+                      placeholder="P123456789"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Indonesia Health Service Number from MPI</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Passport Number</label>
+                    <Input
+                      name="passportNumber"
+                      value={formData.passportNumber}
+                      onChange={handleInputChange}
+                      placeholder="X1234567"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">KK (Kartu Keluarga)</label>
+                    <Input
+                      name="kk"
+                      value={formData.kk}
+                      onChange={handleInputChange}
+                      placeholder="3201234567890123"
+                      maxLength={16}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Family Card Number</p>
+                  </div>
+                </div>
+              </div>
+
               {/* Basic Information */}
               <div>
                 <h3 className="text-lg font-semibold mb-4">Basic Information</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium mb-2">Prefix/Title</label>
+                    <Input
+                      name="prefix"
+                      value={formData.prefix}
+                      onChange={handleInputChange}
+                      placeholder="Tn. / Ny. / Dr."
+                    />
+                  </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2">Full Name *</label>
+                    <label className="block text-sm font-medium mb-2">Given Name(s) *</label>
+                    <Input
+                      name="givenNames"
+                      value={formData.givenNames}
+                      onChange={handleInputChange}
+                      placeholder="John William"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Family Name *</label>
+                    <Input
+                      name="familyName"
+                      value={formData.familyName}
+                      onChange={handleInputChange}
+                      placeholder="Doe"
+                      required
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium mb-2">Full Name (Display) *</label>
                     <Input
                       name="name"
                       value={formData.name}
                       onChange={handleInputChange}
-                      placeholder="John Doe"
+                      placeholder="John William Doe"
                       required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Suffix</label>
+                    <Input
+                      name="suffix"
+                      value={formData.suffix}
+                      onChange={handleInputChange}
+                      placeholder="Jr. / Sr. / S.Kom"
                     />
                   </div>
                   <div>
@@ -766,19 +992,53 @@ export default function PatientsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2">Gender *</label>
-                    <select
-                      name="gender"
-                      value={formData.gender}
+                    <label className="block text-sm font-medium mb-2">Birth Place</label>
+                    <Input
+                      name="birthPlace"
+                      value={formData.birthPlace}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 border rounded-lg"
-                      required
-                    >
-                      <option value="">Select gender</option>
-                      <option value="male">Male</option>
-                      <option value="female">Female</option>
-                    </select>
+                      placeholder="Jakarta"
+                    />
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Gender *</label>
+                    <Select name="gender" value={formData.gender} onValueChange={(value) => setFormData(prev => ({ ...prev, gender: value }))} required>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select gender" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="male">Male</SelectItem>
+                        <SelectItem value="female">Female</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                        <SelectItem value="unknown">Unknown</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Blood Type *</label>
+                    <Select name="bloodType" value={formData.bloodType} onValueChange={(value) => setFormData(prev => ({ ...prev, bloodType: value }))} required>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select blood type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="A+">A+</SelectItem>
+                        <SelectItem value="A-">A-</SelectItem>
+                        <SelectItem value="B+">B+</SelectItem>
+                        <SelectItem value="B-">B-</SelectItem>
+                        <SelectItem value="AB+">AB+</SelectItem>
+                        <SelectItem value="AB-">AB-</SelectItem>
+                        <SelectItem value="O+">O+</SelectItem>
+                        <SelectItem value="O-">O-</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Contact Information */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Contact Information</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium mb-2">Phone Number *</label>
                     <Input
@@ -791,31 +1051,90 @@ export default function PatientsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2">Blood Type *</label>
-                    <select
-                      name="bloodType"
-                      value={formData.bloodType}
+                    <label className="block text-sm font-medium mb-2">Email Address</label>
+                    <Input
+                      type="email"
+                      name="email"
+                      value={formData.email}
                       onChange={handleInputChange}
-                      className="w-full px-3 py-2 border rounded-lg"
-                      required
-                    >
-                      <option value="">Select blood type</option>
-                      <option value="A+">A+</option>
-                      <option value="A-">A-</option>
-                      <option value="B+">B+</option>
-                      <option value="B-">B-</option>
-                      <option value="AB+">AB+</option>
-                      <option value="AB-">AB-</option>
-                      <option value="O+">O+</option>
-                      <option value="O-">O-</option>
-                    </select>
+                      placeholder="patient@example.com"
+                    />
                   </div>
                 </div>
               </div>
 
-              {/* Address */}
+              {/* FHIR Extensions - Indonesian Specific */}
               <div>
-                <h3 className="text-lg font-semibold mb-4">Address</h3>
+                <h3 className="text-lg font-semibold mb-4">Additional Information (SATUSEHAT)</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Citizenship Status *</label>
+                    <Select name="citizenshipStatus" value={formData.citizenshipStatus} onValueChange={(value) => setFormData(prev => ({ ...prev, citizenshipStatus: value }))} required>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select citizenship" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="WNI">WNI (Indonesian Citizen)</SelectItem>
+                        <SelectItem value="WNA">WNA (Foreign Citizen)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Religion</label>
+                    <Select name="religion" value={formData.religion} onValueChange={(value) => setFormData(prev => ({ ...prev, religion: value }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select religion" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="islam">Islam</SelectItem>
+                        <SelectItem value="christian-protestant">Christian (Protestant)</SelectItem>
+                        <SelectItem value="christian-catholic">Christian (Catholic)</SelectItem>
+                        <SelectItem value="hindu">Hindu</SelectItem>
+                        <SelectItem value="buddhist">Buddhist</SelectItem>
+                        <SelectItem value="confucianist">Confucianist</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Marital Status</label>
+                    <Select name="maritalStatus" value={formData.maritalStatus} onValueChange={(value) => setFormData(prev => ({ ...prev, maritalStatus: value }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="M">Married</SelectItem>
+                        <SelectItem value="S">Single</SelectItem>
+                        <SelectItem value="D">Divorced</SelectItem>
+                        <SelectItem value="W">Widowed</SelectItem>
+                        <SelectItem value="U">Unmarried</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Education Level</label>
+                    <Input
+                      name="education"
+                      value={formData.education}
+                      onChange={handleInputChange}
+                      placeholder="High School / Bachelor / Master"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Occupation</label>
+                    <Input
+                      name="occupation"
+                      value={formData.occupation}
+                      onChange={handleInputChange}
+                      placeholder="Teacher / Engineer / Student"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Address with Administrative Codes */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Address (FHIR with Administrative Codes)</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium mb-2">Street Address</label>
@@ -823,16 +1142,63 @@ export default function PatientsPage() {
                       name="street"
                       value={formData.street}
                       onChange={handleInputChange}
-                      placeholder="Jl. Example No. 123"
+                      placeholder="Jl. Sudirman No. 123"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2">City</label>
+                    <label className="block text-sm font-medium mb-2">RT</label>
+                    <Input
+                      name="rt"
+                      value={formData.rt}
+                      onChange={handleInputChange}
+                      placeholder="001"
+                      maxLength={3}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">RW</label>
+                    <Input
+                      name="rw"
+                      value={formData.rw}
+                      onChange={handleInputChange}
+                      placeholder="002"
+                      maxLength={3}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">District (Kecamatan)</label>
+                    <Input
+                      name="district"
+                      value={formData.district}
+                      onChange={handleInputChange}
+                      placeholder="Menteng"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">District Code</label>
+                    <Input
+                      name="districtCode"
+                      value={formData.districtCode}
+                      onChange={handleInputChange}
+                      placeholder="317101"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">City (Kabupaten/Kota)</label>
                     <Input
                       name="city"
                       value={formData.city}
                       onChange={handleInputChange}
-                      placeholder="Jakarta"
+                      placeholder="Jakarta Pusat"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">City Code</label>
+                    <Input
+                      name="cityCode"
+                      value={formData.cityCode}
+                      onChange={handleInputChange}
+                      placeholder="3171"
                     />
                   </div>
                   <div>
@@ -845,12 +1211,22 @@ export default function PatientsPage() {
                     />
                   </div>
                   <div>
+                    <label className="block text-sm font-medium mb-2">Province Code</label>
+                    <Input
+                      name="provinceCode"
+                      value={formData.provinceCode}
+                      onChange={handleInputChange}
+                      placeholder="31"
+                    />
+                  </div>
+                  <div>
                     <label className="block text-sm font-medium mb-2">Postal Code</label>
                     <Input
                       name="postalCode"
                       value={formData.postalCode}
                       onChange={handleInputChange}
-                      placeholder="12345"
+                      placeholder="10310"
+                      maxLength={5}
                     />
                   </div>
                 </div>
