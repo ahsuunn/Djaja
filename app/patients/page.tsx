@@ -202,34 +202,247 @@ export default function PatientsPage() {
     try {
       toast.loading('Exporting FHIR data...', { id: 'fhir-export' });
 
+      // FHIR Patient resource following SATUSEHAT Kemenkes framework
       const fhirPatient = {
         resourceType: 'Patient',
         id: patient._id,
+        meta: {
+          profile: ['https://fhir.kemkes.go.id/r4/StructureDefinition/Patient']
+        },
+        // Identifiers - NIK, Patient ID, etc.
         identifier: [
           {
-            system: 'http://djaja-diagnostics.com/patient-id',
-            value: patient.patientId,
+            use: 'official',
+            system: 'https://fhir.kemkes.go.id/id/nik',
+            value: patient.patientId, // In real implementation, this would be NIK
+          },
+          {
+            use: 'official',
+            system: 'http://sys-ids.kemkes.go.id/patient-ihs-number',
+            value: patient._id, // IHS Number from MPI
           },
         ],
+        // Active status
+        active: true,
+        // Name with full HumanName structure
         name: [
           {
             use: 'official',
             text: patient.name,
           },
         ],
-        gender: patient.gender,
-        birthDate: patient.dateOfBirth,
+        // Telecom - phone and email
         telecom: [
           {
             system: 'phone',
             value: patient.phoneNumber,
+            use: 'mobile',
+          },
+        ],
+        // Gender following AdministrativeGender
+        gender: patient.gender as 'male' | 'female' | 'other' | 'unknown',
+        // Birth date in YYYY-MM-DD format
+        birthDate: patient.dateOfBirth,
+        // Address with administrative codes
+        address: patient.address ? [
+          {
+            use: 'home',
+            line: [patient.address.street],
+            city: patient.address.city,
+            postalCode: patient.address.postalCode,
+            country: 'ID',
+            extension: [
+              {
+                url: 'https://fhir.kemkes.go.id/r4/StructureDefinition/administrativeCode',
+                extension: [
+                  {
+                    url: 'province',
+                    valueCode: patient.address.province,
+                  },
+                  {
+                    url: 'city',
+                    valueCode: patient.address.city,
+                  },
+                ],
+              },
+            ],
+          },
+        ] : [],
+        // Marital status
+        maritalStatus: {
+          coding: [
+            {
+              system: 'http://terminology.hl7.org/CodeSystem/v3-MaritalStatus',
+              code: 'U', // Unknown - can be updated based on actual data
+              display: 'Unmarried',
+            },
+          ],
+        },
+        // Emergency contact
+        contact: patient.emergencyContact ? [
+          {
+            relationship: [
+              {
+                coding: [
+                  {
+                    system: 'http://terminology.hl7.org/CodeSystem/v2-0131',
+                    code: 'C',
+                    display: 'Emergency Contact',
+                  },
+                ],
+              },
+            ],
+            name: {
+              use: 'official',
+              text: patient.emergencyContact.name,
+            },
+            telecom: [
+              {
+                system: 'phone',
+                value: patient.emergencyContact.phoneNumber,
+                use: 'mobile',
+              },
+            ],
+          },
+        ] : [],
+        // Communication language
+        communication: [
+          {
+            language: {
+              coding: [
+                {
+                  system: 'urn:ietf:bcp:47',
+                  code: 'id-ID',
+                  display: 'Indonesian',
+                },
+              ],
+            },
+            preferred: true,
+          },
+        ],
+        // Extensions for additional data
+        extension: [
+          {
+            url: 'https://fhir.kemkes.go.id/r4/StructureDefinition/citizenshipStatus',
+            valueCode: 'WNI', // Indonesian citizen
           },
         ],
       };
 
-      const dataStr = JSON.stringify(fhirPatient, null, 2);
+      // Create a Bundle resource for complete export
+      const fhirBundle = {
+        resourceType: 'Bundle',
+        type: 'collection',
+        timestamp: new Date().toISOString(),
+        entry: [
+          {
+            fullUrl: `Patient/${patient._id}`,
+            resource: fhirPatient,
+          },
+          // Include Observation resources for allergies
+          ...patient.allergies.map((allergy, index) => ({
+            fullUrl: `AllergyIntolerance/${patient._id}-allergy-${index}`,
+            resource: {
+              resourceType: 'AllergyIntolerance',
+              id: `${patient._id}-allergy-${index}`,
+              clinicalStatus: {
+                coding: [
+                  {
+                    system: 'http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical',
+                    code: 'active',
+                    display: 'Active',
+                  },
+                ],
+              },
+              verificationStatus: {
+                coding: [
+                  {
+                    system: 'http://terminology.hl7.org/CodeSystem/allergyintolerance-verification',
+                    code: 'confirmed',
+                    display: 'Confirmed',
+                  },
+                ],
+              },
+              type: 'allergy',
+              category: ['medication'],
+              patient: {
+                reference: `Patient/${patient._id}`,
+                display: patient.name,
+              },
+              code: {
+                text: allergy,
+              },
+            },
+          })),
+          // Include Condition resources for medical history
+          ...patient.medicalHistory.map((condition, index) => ({
+            fullUrl: `Condition/${patient._id}-condition-${index}`,
+            resource: {
+              resourceType: 'Condition',
+              id: `${patient._id}-condition-${index}`,
+              clinicalStatus: {
+                coding: [
+                  {
+                    system: 'http://terminology.hl7.org/CodeSystem/condition-clinical',
+                    code: 'active',
+                    display: 'Active',
+                  },
+                ],
+              },
+              verificationStatus: {
+                coding: [
+                  {
+                    system: 'http://terminology.hl7.org/CodeSystem/condition-ver-status',
+                    code: 'confirmed',
+                    display: 'Confirmed',
+                  },
+                ],
+              },
+              category: [
+                {
+                  coding: [
+                    {
+                      system: 'http://terminology.hl7.org/CodeSystem/condition-category',
+                      code: 'problem-list-item',
+                      display: 'Problem List Item',
+                    },
+                  ],
+                },
+              ],
+              code: {
+                text: condition,
+              },
+              subject: {
+                reference: `Patient/${patient._id}`,
+                display: patient.name,
+              },
+            },
+          })),
+          // Include MedicationStatement for current medications
+          ...patient.currentMedications.map((medication, index) => ({
+            fullUrl: `MedicationStatement/${patient._id}-medication-${index}`,
+            resource: {
+              resourceType: 'MedicationStatement',
+              id: `${patient._id}-medication-${index}`,
+              status: 'active',
+              medicationCodeableConcept: {
+                text: medication,
+              },
+              subject: {
+                reference: `Patient/${patient._id}`,
+                display: patient.name,
+              },
+              effectivePeriod: {
+                start: new Date().toISOString().split('T')[0],
+              },
+            },
+          })),
+        ],
+      };
+
+      const dataStr = JSON.stringify(fhirBundle, null, 2);
       const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
-      const exportFileDefaultName = `patient-${patient.patientId}-fhir.json`;
+      const exportFileDefaultName = `patient-${patient.patientId}-fhir-bundle.json`;
 
       const linkElement = document.createElement('a');
       linkElement.setAttribute('href', dataUri);
