@@ -141,23 +141,23 @@ router.get('/Observation/:id', async (req: Request, res: Response): Promise<void
         coding: [
           {
             system: 'http://loinc.org',
-            code: getLoincCode(observation.testType),
-            display: getDisplayName(observation.testType),
+            code: getLoincCode(observation.testType || 'comprehensive'),
+            display: getDisplayName(observation.testType || 'comprehensive'),
           },
         ],
-        text: observation.testType,
+        text: observation.testType || 'comprehensive',
       },
-      subject: {
+      subject: observation.patientId ? {
         reference: `Patient/${observation.patientId._id}`,
         display: (observation.patientId as any).name,
-      },
+      } : undefined,
       effectiveDateTime: observation.createdAt.toISOString(),
-      performer: [
+      performer: observation.performedBy ? [
         {
           reference: `Practitioner/${observation.performedBy._id}`,
           display: (observation.performedBy as any).name,
         },
-      ],
+      ] : [],
       component: [],
     };
 
@@ -262,14 +262,14 @@ router.get('/Observation/:id', async (req: Request, res: Response): Promise<void
     }
 
     // Add doctor notes if available
-    if (observation.doctorNotes) {
+    if (observation.doctorNotes && observation.reviewedBy && observation.reviewedAt) {
       fhirObservation.note = [
         {
           authorReference: {
-            reference: `Practitioner/${observation.reviewedBy?._id}`,
-            display: (observation.reviewedBy as any)?.name,
+            reference: `Practitioner/${observation.reviewedBy._id}`,
+            display: (observation.reviewedBy as any).name,
           },
-          time: observation.reviewedAt?.toISOString(),
+          time: observation.reviewedAt.toISOString(),
           text: observation.doctorNotes,
         },
       ];
