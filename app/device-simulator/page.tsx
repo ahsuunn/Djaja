@@ -172,76 +172,319 @@ export default function DeviceSimulator() {
       <head>
         <title>Medical Summary - ${selectedPatient?.name || 'Patient'}</title>
         <style>
-          body { font-family: Arial, sans-serif; padding: 40px; line-height: 1.6; }
-          .header { text-align: center; margin-bottom: 30px; border-bottom: 3px solid #333; padding-bottom: 20px; }
-          .risk-badge { display: inline-block; padding: 8px 16px; border-radius: 20px; font-weight: bold; }
-          .critical { background: #dc2626; color: white; }
-          .high { background: #ea580c; color: white; }
-          .moderate { background: #ca8a04; color: white; }
-          .low { background: #16a34a; color: white; }
-          .section { margin: 30px 0; page-break-inside: avoid; }
-          .section-title { font-size: 18px; font-weight: bold; color: #333; margin-bottom: 15px; border-bottom: 2px solid #eee; padding-bottom: 8px; }
-          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 15px 0; }
-          .info-item { padding: 10px; background: #f9f9f9; border-left: 3px solid #3b82f6; }
-          .indicator { margin: 10px 0; padding: 15px; border-left: 4px solid #3b82f6; background: #f0f9ff; }
-          .vital { padding: 10px; margin: 8px 0; border-radius: 8px; }
-          .normal { background: #f0fdf4; border-left: 4px solid #16a34a; }
-          .caution { background: #fefce8; border-left: 4px solid #ca8a04; }
-          .warning { background: #fff7ed; border-left: 4px solid #ea580c; }
-          .critical-vital { background: #fef2f2; border-left: 4px solid #dc2626; }
-          .prescription { margin: 15px 0; padding: 15px; border: 1px solid #ddd; border-radius: 8px; }
-          .recommendation { margin: 10px 0; padding: 12px; border-left: 4px solid #8b5cf6; background: #faf5ff; }
-          ul { margin: 10px 0; padding-left: 20px; }
-          @media print { body { padding: 20px; } }
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            padding: 48px; 
+            line-height: 1.6; 
+            color: #1a1a1a;
+            background: white;
+            font-size: 14px;
+          }
+          .header { 
+            margin-bottom: 48px; 
+            padding-bottom: 24px; 
+            border-bottom: 1px solid #e5e5e5; 
+          }
+          .header h1 { 
+            font-size: 28px; 
+            font-weight: 600; 
+            color: #000; 
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+          }
+          .header p { 
+            color: #666; 
+            font-size: 13px; 
+          }
+          .risk-badge { 
+            display: inline-block; 
+            padding: 6px 14px; 
+            border-radius: 6px; 
+            font-weight: 500; 
+            font-size: 12px;
+            letter-spacing: 0.5px;
+          }
+          .critical { background: #fee; color: #dc2626; border: 1px solid #fcc; }
+          .high { background: #fff4ed; color: #ea580c; border: 1px solid #fed7aa; }
+          .moderate { background: #fefce8; color: #ca8a04; border: 1px solid #fef08a; }
+          .low { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+          .section { 
+            margin: 36px 0; 
+            page-break-inside: avoid; 
+          }
+          .section-title { 
+            font-size: 16px; 
+            font-weight: 600; 
+            color: #000; 
+            margin-bottom: 16px; 
+            letter-spacing: -0.3px;
+          }
+          .info-grid { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            gap: 12px; 
+            margin: 16px 0; 
+          }
+          .info-item { 
+            padding: 12px 16px; 
+            background: #fafafa; 
+            border-radius: 6px;
+            border: 1px solid #f0f0f0;
+          }
+          .info-item strong { 
+            color: #666; 
+            font-weight: 500; 
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: block;
+            margin-bottom: 4px;
+          }
+          .info-item span { 
+            color: #000; 
+            font-size: 14px; 
+          }
+          .vital { 
+            padding: 14px 16px; 
+            margin: 8px 0; 
+            border-radius: 6px; 
+            border: 1px solid;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          }
+          .vital-label { font-weight: 500; color: #000; }
+          .vital-value { 
+            font-family: 'SF Mono', Monaco, monospace; 
+            font-size: 13px;
+            color: #666;
+          }
+          .vital-message { 
+            font-size: 12px; 
+            color: #666; 
+            margin-top: 6px;
+            display: block;
+          }
+          .normal { background: #f9fef9; border-color: #d1fad1; }
+          .caution { background: #fefef9; border-color: #fef4c7; }
+          .warning { background: #fffaf5; border-color: #fed7aa; }
+          .critical-vital { background: #fef9f9; border-color: #fecaca; }
+          .indicator { 
+            margin: 12px 0; 
+            padding: 16px; 
+            border-radius: 6px; 
+            background: #fafafa;
+            border: 1px solid #f0f0f0;
+          }
+          .indicator-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+          }
+          .indicator-title { font-weight: 500; color: #000; font-size: 14px; }
+          .likelihood-badge {
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .likelihood-critical { background: #fee; color: #dc2626; }
+          .likelihood-high { background: #fff4ed; color: #ea580c; }
+          .likelihood-moderate { background: #fefce8; color: #ca8a04; }
+          .likelihood-low { background: #f0f9ff; color: #0369a1; }
+          .indicator ul { 
+            list-style: none; 
+            margin-top: 8px;
+          }
+          .indicator li { 
+            padding: 4px 0;
+            padding-left: 16px;
+            position: relative;
+            font-size: 13px;
+            color: #666;
+          }
+          .indicator li:before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: #999;
+          }
+          .prescription { 
+            margin: 16px 0; 
+            padding: 16px; 
+            border: 1px solid #e5e5e5; 
+            border-radius: 6px; 
+            background: #fafafa;
+          }
+          .prescription h3 { 
+            font-size: 15px; 
+            font-weight: 600; 
+            color: #000; 
+            margin-bottom: 10px; 
+          }
+          .prescription-meta {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 10px;
+            font-size: 12px;
+          }
+          .prescription-meta-item { color: #666; }
+          .prescription-meta-item strong { color: #999; font-weight: 500; }
+          .prescription p { 
+            font-size: 13px; 
+            color: #666; 
+            line-height: 1.5;
+          }
+          .recommendation { 
+            margin: 12px 0; 
+            padding: 14px 16px; 
+            border-radius: 6px; 
+            background: #fafafa;
+            border: 1px solid #e5e5e5;
+          }
+          .rec-header {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 8px;
+          }
+          .urgency-badge {
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .urgency-immediate { background: #fee; color: #dc2626; }
+          .urgency-urgent { background: #fff4ed; color: #ea580c; }
+          .urgency-routine { background: #f0f9ff; color: #0369a1; }
+          .rec-type { 
+            font-weight: 500; 
+            font-size: 13px; 
+            color: #000; 
+          }
+          .rec-message { 
+            font-size: 13px; 
+            color: #666; 
+            line-height: 1.6;
+          }
+          .note { 
+            font-size: 12px; 
+            color: #999; 
+            font-style: italic; 
+            margin-top: 16px;
+            padding: 12px;
+            background: #fafafa;
+            border-radius: 6px;
+            border: 1px solid #f0f0f0;
+          }
+          .footer { 
+            margin-top: 64px; 
+            padding-top: 24px; 
+            border-top: 1px solid #e5e5e5; 
+            text-align: center; 
+            color: #999;
+            font-size: 12px;
+          }
+          .footer p { margin: 4px 0; }
+          @media print { 
+            body { padding: 32px; } 
+            .section { page-break-inside: avoid; }
+          }
         </style>
       </head>
       <body>
         <div class="header">
           <h1>Medical Diagnostic Summary</h1>
-          <p><strong>Date:</strong> ${new Date(result.processedAt).toLocaleString()}</p>
+          <p>${new Date(result.processedAt).toLocaleString('en-US', { 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric', 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          })}</p>
         </div>
         
         <div class="section">
           <div class="section-title">Patient Information</div>
           <div class="info-grid">
-            <div class="info-item"><strong>Name:</strong> ${selectedPatient?.name || 'Demo Patient'}</div>
-            <div class="info-item"><strong>Patient ID:</strong> ${selectedPatient?.patientId || 'demo-patient'}</div>
-            <div class="info-item"><strong>Gender:</strong> ${selectedPatient?.gender || 'N/A'}</div>
-            <div class="info-item"><strong>Blood Type:</strong> ${selectedPatient?.bloodType || 'N/A'}</div>
+            <div class="info-item">
+              <strong>Name</strong>
+              <span>${selectedPatient?.name || 'Demo Patient'}</span>
+            </div>
+            <div class="info-item">
+              <strong>Patient ID</strong>
+              <span>${selectedPatient?.patientId || 'demo-patient'}</span>
+            </div>
+            <div class="info-item">
+              <strong>Gender</strong>
+              <span>${selectedPatient?.gender || 'N/A'}</span>
+            </div>
+            <div class="info-item">
+              <strong>Blood Type</strong>
+              <span>${selectedPatient?.bloodType || 'N/A'}</span>
+            </div>
           </div>
         </div>
         
         <div class="section">
           <div class="section-title">Overall Assessment</div>
-          <p><span class="risk-badge ${result.overallRisk}">${result.overallRisk.toUpperCase()} RISK</span></p>
-          <p style="margin-top: 15px;">${result.summary}</p>
+          <p style="margin-bottom: 12px;">
+            <span class="risk-badge ${result.overallRisk}">${result.overallRisk.toUpperCase()} RISK</span>
+          </p>
+          <p style="color: #666; line-height: 1.7;">${result.summary}</p>
         </div>
         
         <div class="section">
-          <div class="section-title">Vital Signs Readings</div>
+          <div class="section-title">Vital Signs</div>
           ${result.analysis.bloodPressure ? `
             <div class="vital ${result.analysis.bloodPressure.status === 'critical' ? 'critical-vital' : result.analysis.bloodPressure.status}">
-              <strong>Blood Pressure:</strong> ${vitals.bloodPressure.systolic}/${vitals.bloodPressure.diastolic} mmHg - ${result.analysis.bloodPressure.message}
+              <div>
+                <span class="vital-label">Blood Pressure</span>
+                <span class="vital-message">${result.analysis.bloodPressure.message}</span>
+              </div>
+              <span class="vital-value">${vitals.bloodPressure.systolic}/${vitals.bloodPressure.diastolic} mmHg</span>
             </div>
           ` : ''}
           ${result.analysis.heartRate ? `
             <div class="vital ${result.analysis.heartRate.status === 'critical' ? 'critical-vital' : result.analysis.heartRate.status}">
-              <strong>Heart Rate:</strong> ${vitals.heartRate} bpm - ${result.analysis.heartRate.message}
+              <div>
+                <span class="vital-label">Heart Rate</span>
+                <span class="vital-message">${result.analysis.heartRate.message}</span>
+              </div>
+              <span class="vital-value">${vitals.heartRate} bpm</span>
             </div>
           ` : ''}
           ${result.analysis.spO2 ? `
             <div class="vital ${result.analysis.spO2.status === 'critical' ? 'critical-vital' : result.analysis.spO2.status}">
-              <strong>Oxygen Saturation:</strong> ${vitals.spO2}% - ${result.analysis.spO2.message}
+              <div>
+                <span class="vital-label">Oxygen Saturation</span>
+                <span class="vital-message">${result.analysis.spO2.message}</span>
+              </div>
+              <span class="vital-value">${vitals.spO2}%</span>
             </div>
           ` : ''}
           ${result.analysis.temperature ? `
             <div class="vital ${result.analysis.temperature.status === 'critical' ? 'critical-vital' : result.analysis.temperature.status}">
-              <strong>Temperature:</strong> ${vitals.temperature}°C - ${result.analysis.temperature.message}
+              <div>
+                <span class="vital-label">Temperature</span>
+                <span class="vital-message">${result.analysis.temperature.message}</span>
+              </div>
+              <span class="vital-value">${vitals.temperature}°C</span>
             </div>
           ` : ''}
           ${result.analysis.ekg ? `
             <div class="vital ${result.analysis.ekg.status === 'critical' ? 'critical-vital' : result.analysis.ekg.status}">
-              <strong>EKG Rhythm:</strong> ${vitals.ekg.rhythm} - ${result.analysis.ekg.message}
+              <div>
+                <span class="vital-label">EKG Rhythm</span>
+                <span class="vital-message">${result.analysis.ekg.message}</span>
+              </div>
+              <span class="vital-value" style="text-transform: capitalize;">${vitals.ekg.rhythm}</span>
             </div>
           ` : ''}
         </div>
@@ -251,7 +494,10 @@ export default function DeviceSimulator() {
             <div class="section-title">Disease Indicators</div>
             ${result.diseaseIndicators.map(indicator => `
               <div class="indicator">
-                <strong>${indicator.condition}</strong> <span style="background: #3b82f6; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px;">${indicator.likelihood}</span>
+                <div class="indicator-header">
+                  <span class="indicator-title">${indicator.condition}</span>
+                  <span class="likelihood-badge likelihood-${indicator.likelihood}">${indicator.likelihood}</span>
+                </div>
                 <ul>
                   ${indicator.indicators.map(ind => `<li>${ind}</li>`).join('')}
                 </ul>
@@ -265,12 +511,18 @@ export default function DeviceSimulator() {
             <div class="section-title">Recommended Medications</div>
             ${result.prescriptions.map(med => `
               <div class="prescription">
-                <h3 style="margin: 0 0 10px 0; color: #1e40af;">${med.name}</h3>
-                <p><strong>Dosage:</strong> ${med.dosage} | <strong>Frequency:</strong> ${med.frequency} | <strong>Duration:</strong> ${med.duration}</p>
-                <p><strong>Instructions:</strong> ${med.instructions}</p>
+                <h3>${med.name}</h3>
+                <div class="prescription-meta">
+                  <div class="prescription-meta-item"><strong>Dosage</strong> ${med.dosage}</div>
+                  <div class="prescription-meta-item"><strong>Frequency</strong> ${med.frequency}</div>
+                  <div class="prescription-meta-item"><strong>Duration</strong> ${med.duration}</div>
+                </div>
+                <p>${med.instructions}</p>
               </div>
             `).join('')}
-            <p style="font-style: italic; color: #666; margin-top: 15px;">⚠️ Note: These are automated recommendations. Consult with a licensed physician before taking any medication.</p>
+            <div class="note">
+              Note: These are automated recommendations. Consult with a licensed physician before taking any medication.
+            </div>
           </div>
         ` : ''}
         
@@ -279,16 +531,22 @@ export default function DeviceSimulator() {
             <div class="section-title">Medical Recommendations</div>
             ${result.recommendations.map(rec => `
               <div class="recommendation">
-                <p><strong style="background: #8b5cf6; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px;">${rec.urgency.toUpperCase()}</strong> 
-                <strong>${rec.type === 'teleconsultation' ? '📞 Teleconsultation' : rec.type === 'hospital_referral' ? '🏥 Hospital Referral' : rec.type === 'follow_up' ? '📅 Follow-up' : '💡 Lifestyle'}</strong></p>
-                <p>${rec.message}</p>
+                <div class="rec-header">
+                  <span class="urgency-badge urgency-${rec.urgency}">${rec.urgency}</span>
+                  <span class="rec-type">${
+                    rec.type === 'teleconsultation' ? 'Teleconsultation' :
+                    rec.type === 'hospital_referral' ? 'Hospital Referral' :
+                    rec.type === 'follow_up' ? 'Follow-up' : 'Lifestyle'
+                  }</span>
+                </div>
+                <p class="rec-message">${rec.message}</p>
               </div>
             `).join('')}
           </div>
         ` : ''}
         
-        <div style="margin-top: 50px; padding-top: 20px; border-top: 2px solid #eee; text-align: center; color: #666;">
-          <p>This report was generated automatically by Djaja Diagnostics IoT System</p>
+        <div class="footer">
+          <p>Djaja Diagnostics IoT System</p>
           <p>Report ID: SIM-${Date.now()}</p>
         </div>
       </body>
@@ -565,22 +823,15 @@ export default function DeviceSimulator() {
                       Generate Random
                     </Button>
                     <Button
-                      onClick={() => sendToCloud()}
+                      onClick={startComprehensiveAnalysis}
                       disabled={!selectedPatient || !isConnected || isSending || anyStreaming || isCollectingVitals}
                       className="flex-1"
                     >
-                      {isSending ? 'Processing...' : 'Send Single'}
+                      {isCollectingVitals ? `Collecting Data... ${collectedReadings}/${totalReadingsNeeded}` : 'Start Comprehensive Analysis'}
                     </Button>
                   </div>
-                  <Button
-                    onClick={startComprehensiveAnalysis}
-                    disabled={!selectedPatient || !isConnected || isSending || anyStreaming || isCollectingVitals}
-                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-                  >
-                    {isCollectingVitals ? `Collecting Data... ${collectedReadings}/${totalReadingsNeeded}` : '🔍 Start Comprehensive Analysis'}
-                  </Button>
                   {!selectedPatient && (
-                    <p className="text-xs text-red-600 text-center mt-1">⚠️ Please select a patient first</p>
+                    <p className="text-xs text-red-600 text-center mt-1"> Please select a patient first</p>
                   )}
                 </div>
               </CardContent>
