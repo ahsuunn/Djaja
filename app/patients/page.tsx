@@ -3,12 +3,16 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { getPatients, createPatient, getPatientObservations } from '@/lib/api-client';
+import { isOnline } from '@/lib/db';
+import { initAutoSync, performFullSync } from '@/lib/sync';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Users, FileText, Download, Search, AlertCircle, Loader2, RefreshCcw, RefreshCcwIcon, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { SyncStatusIndicator } from '@/components/SyncStatusIndicator';
 
 interface Patient {
   _id: string;
@@ -83,6 +87,8 @@ export default function PatientsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [observations, setObservations] = useState<Observation[]>([]);
   const [loadingObservations, setLoadingObservations] = useState(false);
+  const [isOnlineStatus, setIsOnlineStatus] = useState(true);
+  const [dataFromCache, setDataFromCache] = useState(false);
   const [formData, setFormData] = useState({
     // FHIR Identifiers
     nik: '',
@@ -130,6 +136,21 @@ export default function PatientsPage() {
 
   useEffect(() => {
     fetchPatients();
+    setIsOnlineStatus(isOnline());
+
+    const handleOnline = () => {
+      setIsOnlineStatus(true);
+      fetchPatients(); // Refresh data when back online
+    };
+    const handleOffline = () => setIsOnlineStatus(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   // Check if we should auto-open the add patient modal
@@ -152,20 +173,14 @@ export default function PatientsPage() {
         return;
       }
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-      const response = await fetch(`${apiUrl}/api/patients`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch patients');
+      // Use offline-first API
+      const result = await getPatients(token);
+      setPatients(result.patients || []);
+      setDataFromCache(result.fromCache || false);
+      
+      if (result.fromCache) {
+        console.log('Loaded patients from cache');
       }
-
-      const data = await response.json();
-      setPatients(data.patients || []);
     } catch (error) {
       console.error('Fetch patients error:', error);
       setError(error instanceof Error ? error.message : 'Failed to load patients');
@@ -186,20 +201,9 @@ export default function PatientsPage() {
       const token = localStorage.getItem('token');
       if (!token) return;
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-      const response = await fetch(`${apiUrl}/api/patients/${patientId}/observations`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch observations');
-      }
-
-      const data = await response.json();
-      setObservations(data.observations || []);
+      // Use offline-first API
+      const result = await getPatientObservations(token, patientId);
+      setObservations(result.observations || []);
     } catch (error) {
       console.error('Fetch observations error:', error);
       setObservations([]);
@@ -350,17 +354,12 @@ export default function PatientsPage() {
         currentMedications: formData.currentMedications ? formData.currentMedications.split(',').map(m => m.trim()) : [],
       };
 
-      const response = await fetch(`${apiUrl}/api/patients`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(patientData),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to add patient');
+      // Use offline-first API
+      const result = await createPatient(token, patientData);
+      
+      if (result.offline) {
+        // Patient saved locally
+        console.log('Patient saved locally, will sync when online');
       }
 
       // Reset form and close modal
@@ -682,20 +681,30 @@ export default function PatientsPage() {
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-bold text-primary mb-2">Electronic Medical Records</h1>
-            <p className="text-muted-foreground">Patient demographics and medical history management</p>
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="text-4xl font-bold text-primary mb-2">Electronic Medical Records</h1>
+              <p className="text-muted-foreground">Patient demographics and medical history management</p>
+            </div>
+            <div className="flex gap-3">
+              <Button onClick={() => setShowAddModal(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Patient
+              </Button>
+              <Button onClick={fetchPatients} variant="outline" disabled={loading}>
+                {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                Refresh
+              </Button>
+            </div>
           </div>
-          <div className="flex gap-3">
-            <Button onClick={() => setShowAddModal(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Patient
-            </Button>
-            <Button onClick={fetchPatients} variant="outline" disabled={loading}>
-              {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-              Refresh
-            </Button>
+          <div className="flex items-center justify-between">
+            <SyncStatusIndicator />
+            {dataFromCache && (
+              <div className="text-sm text-yellow-600 bg-yellow-50 px-3 py-1.5 rounded-full">
+                📦 Showing cached data
+              </div>
+            )}
           </div>
         </div>
 

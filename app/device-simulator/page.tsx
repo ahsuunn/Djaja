@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Activity, Heart, Droplet, Stethoscope, Zap, Play, Pause, Thermometer, FileText } from 'lucide-react';
+import { Activity, Heart, Droplet, Stethoscope, Zap, Play, Pause, Thermometer, FileText, WifiOff, Wifi } from 'lucide-react';
+import { performFullSync } from '@/lib/sync';
+import { analyzeDiagnostics, createObservation, getConnectionStatus } from '@/lib/api-client';
+import { isOnline } from '@/lib/db';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +18,7 @@ import { IndicatorControlPanel } from '@/components/device-simulator/IndicatorCo
 import { StreamingIndicator } from '@/components/device-simulator/StreamingIndicator';
 import { generateMinimalistPDF } from '@/lib/pdf-utils';
 import { toast } from 'sonner';
+import { SyncStatusIndicator } from '@/components/SyncStatusIndicator';
 
 export default function DeviceSimulator() {
   const [vitals, setVitals] = useState<VitalSigns>({
@@ -64,6 +68,25 @@ export default function DeviceSimulator() {
   const totalReadingsNeeded = 5; // Number of vital readings to collect
   const [isSavingObservation, setIsSavingObservation] = useState(false);
   const [observationSaved, setObservationSaved] = useState(false);
+  const [isOnlineStatus, setIsOnlineStatus] = useState(true);
+  const [syncStatus, setSyncStatus] = useState({ pending: 0, syncing: false });
+
+  // Initialize online status tracking
+  useEffect(() => {
+    setIsOnlineStatus(isOnline());
+
+    // Update online status
+    const handleOnline = () => setIsOnlineStatus(true);
+    const handleOffline = () => setIsOnlineStatus(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const handleGenerateRandomVitals = () => {
     setVitals(generateRandomVitals());
@@ -104,9 +127,6 @@ export default function DeviceSimulator() {
   const performDiagnosticAnalysis = async (vitalData: VitalSigns) => {
     try {
       setIsAnalyzing(true);
-      toast.loading('Analyzing vitals...', { id: 'analysis' });
-
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
       
       const deviceData = {
         deviceId: `SIM-${Date.now()}`,
@@ -119,33 +139,33 @@ export default function DeviceSimulator() {
         timestamp: new Date().toISOString(),
       };
 
-      const response = await fetch(`${apiUrl}/api/diagnostics/analyze`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(deviceData),
-      });
+      // Use offline-first API
+      const result = await analyzeDiagnostics(deviceData);
 
-      if (!response.ok) {
-        throw new Error('Failed to analyze vitals');
+      if (result.offline) {
+        // Use offline analysis
+        toast.info('Using offline analysis', { 
+          id: 'analysis',
+          duration: 2000,
+        });
+        const offlineResult = generateOfflineAnalysis(vitalData);
+        setResult(offlineResult);
+        setShowSummaryModal(true);
+      } else {
+        // Use server analysis
+        toast.success('Analysis complete!', { 
+          id: 'analysis',
+          duration: 2000,
+        });
+        setResult(result);
+        setShowSummaryModal(true);
       }
-
-      const diagnosticResult = await response.json();
-      setResult(diagnosticResult);
-      setShowSummaryModal(true);
-
-      toast.success('Analysis complete!', { 
-        id: 'analysis',
-        duration: 2000,
-      });
     } catch (error) {
       console.error('Error analyzing vitals:', error);
-      toast.error('Failed to analyze vitals. Using offline analysis.', { 
+      toast.error('Analysis failed. Using offline mode.', { 
         id: 'analysis',
-        duration: 4000,
+        duration: 3000,
       });
-      // Fallback to client-side analysis if API fails
       const offlineResult = generateOfflineAnalysis(vitalData);
       setResult(offlineResult);
       setShowSummaryModal(true);
@@ -410,26 +430,21 @@ export default function DeviceSimulator() {
         },
       };
 
-      const response = await fetch(`${apiUrl}/api/observations`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(observationData),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to save observation');
-      }
-
-      const data = await response.json();
+      // Use offline-first API
+      const saveResult = await createObservation(token, observationData);
       setObservationSaved(true);
 
-      toast.success('Diagnostic observation saved successfully!', { 
-        id: 'save-observation',
-        duration: 3000,
-      });
+      if (saveResult.offline) {
+        toast.success('Observation saved locally. Will sync when online.', { 
+          id: 'save-observation',
+          duration: 4000,
+        });
+      } else {
+        toast.success('Diagnostic observation saved successfully!', { 
+          id: 'save-observation',
+          duration: 3000,
+        });
+      }
     } catch (error) {
       console.error('Error saving observation:', error);
       toast.error('Failed to save observation', { 
@@ -630,6 +645,7 @@ export default function DeviceSimulator() {
               <p className="text-slate-600 text-sm">Real-time medical device monitoring and AI diagnostics</p>
             </div>
             <div className="flex items-center gap-4">
+              <SyncStatusIndicator />
               {isAnalyzing && (
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />

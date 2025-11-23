@@ -201,21 +201,6 @@ function analyzeVitals(data: DeviceData): VitalsAnalysis {
     }
   }
 
-  // Glucose Analysis
-  if (data.glucose) {
-    const glucose = data.glucose;
-    if (glucose > 200) {
-      results.glucose = { status: 'critical', message: 'Severe Hyperglycemia' };
-    } else if (glucose > 126) {
-      results.glucose = { status: 'warning', message: 'Diabetes Range' };
-    } else if (glucose > 100) {
-      results.glucose = { status: 'caution', message: 'Pre-diabetes Range' };
-    } else if (glucose < 70) {
-      results.glucose = { status: 'warning', message: 'Hypoglycemia' };
-    } else {
-      results.glucose = { status: 'normal', message: 'Normal Glucose Level' };
-    }
-  }
 
   // EKG Analysis (simplified)
   if (data.ekg) {
