@@ -65,6 +65,8 @@ export default function DeviceSimulator() {
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [collectedReadings, setCollectedReadings] = useState(0);
   const totalReadingsNeeded = 5; // Number of vital readings to collect
+  const [isSavingObservation, setIsSavingObservation] = useState(false);
+  const [observationSaved, setObservationSaved] = useState(false);
 
   useEffect(() => {
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:5000';
@@ -110,6 +112,7 @@ export default function DeviceSimulator() {
     setIsCollectingVitals(true);
     setCollectedReadings(0);
     setResult(null);
+    setObservationSaved(false);
     
     // Generate initial vitals if not set
     const initialVitals = vitals.heartRate === 0 ? generateRandomVitals() : vitals;
@@ -128,6 +131,220 @@ export default function DeviceSimulator() {
         sendToCloud(initialVitals);
       }
     }, 1000);
+  };
+
+  const finishDiagnostic = async () => {
+    if (!result) {
+      toast.error('No diagnostic results available', {
+        duration: 3000,
+      });
+      return;
+    }
+
+    if (!selectedPatient) {
+      toast.error('Please select a patient first', {
+        duration: 3000,
+      });
+      return;
+    }
+
+    try {
+      setIsSavingObservation(true);
+      toast.loading('Saving diagnostic observation...', { id: 'save-observation' });
+
+      const token = localStorage.getItem('token');
+      if (!token) {
+        toast.error('Please log in to save observations', { 
+          id: 'save-observation',
+          duration: 3000,
+        });
+        return;
+      }
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
+      // Prepare FHIR-compliant observation data
+      const observationData = {
+        patientId: selectedPatient._id,
+        testType: 'comprehensive',
+        status: 'final',
+        category: [{
+          coding: [{
+            system: 'http://terminology.hl7.org/CodeSystem/observation-category',
+            code: 'vital-signs',
+            display: 'Vital Signs',
+          }],
+        }],
+        code: {
+          coding: [{
+            system: 'http://loinc.org',
+            code: '85354-9',
+            display: 'Vital signs panel',
+          }],
+          text: 'comprehensive',
+        },
+        subject: {
+          reference: `Patient/${selectedPatient._id}`,
+          display: selectedPatient.name,
+        },
+        effectiveDateTime: new Date(),
+        issued: new Date(),
+        measurements: {
+          bloodPressure: vitals.bloodPressure,
+          heartRate: { value: vitals.heartRate },
+          spO2: { value: vitals.spO2 },
+          temperature: { value: vitals.temperature },
+        },
+        component: [
+          {
+            code: {
+              coding: [{
+                system: 'http://loinc.org',
+                code: '8480-6',
+                display: 'Systolic blood pressure',
+              }],
+            },
+            valueQuantity: {
+              value: vitals.bloodPressure.systolic,
+              unit: 'mmHg',
+              system: 'http://unitsofmeasure.org',
+              code: 'mm[Hg]',
+            },
+            interpretation: [{
+              coding: [{
+                system: 'http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation',
+                code: vitals.bloodPressure.systolic >= 140 ? 'H' : vitals.bloodPressure.systolic < 90 ? 'L' : 'N',
+                display: vitals.bloodPressure.systolic >= 140 ? 'High' : vitals.bloodPressure.systolic < 90 ? 'Low' : 'Normal',
+              }],
+            }],
+          },
+          {
+            code: {
+              coding: [{
+                system: 'http://loinc.org',
+                code: '8462-4',
+                display: 'Diastolic blood pressure',
+              }],
+            },
+            valueQuantity: {
+              value: vitals.bloodPressure.diastolic,
+              unit: 'mmHg',
+              system: 'http://unitsofmeasure.org',
+              code: 'mm[Hg]',
+            },
+            interpretation: [{
+              coding: [{
+                system: 'http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation',
+                code: vitals.bloodPressure.diastolic >= 90 ? 'H' : vitals.bloodPressure.diastolic < 60 ? 'L' : 'N',
+                display: vitals.bloodPressure.diastolic >= 90 ? 'High' : vitals.bloodPressure.diastolic < 60 ? 'Low' : 'Normal',
+              }],
+            }],
+          },
+          {
+            code: {
+              coding: [{
+                system: 'http://loinc.org',
+                code: '8867-4',
+                display: 'Heart rate',
+              }],
+            },
+            valueQuantity: {
+              value: vitals.heartRate,
+              unit: 'beats/minute',
+              system: 'http://unitsofmeasure.org',
+              code: '/min',
+            },
+            interpretation: [{
+              coding: [{
+                system: 'http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation',
+                code: vitals.heartRate > 100 ? 'H' : vitals.heartRate < 60 ? 'L' : 'N',
+                display: vitals.heartRate > 100 ? 'High' : vitals.heartRate < 60 ? 'Low' : 'Normal',
+              }],
+            }],
+          },
+          {
+            code: {
+              coding: [{
+                system: 'http://loinc.org',
+                code: '59408-5',
+                display: 'Oxygen saturation',
+              }],
+            },
+            valueQuantity: {
+              value: vitals.spO2,
+              unit: '%',
+              system: 'http://unitsofmeasure.org',
+              code: '%',
+            },
+            interpretation: [{
+              coding: [{
+                system: 'http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation',
+                code: vitals.spO2 < 95 ? 'L' : 'N',
+                display: vitals.spO2 < 95 ? 'Low' : 'Normal',
+              }],
+            }],
+          },
+          {
+            code: {
+              coding: [{
+                system: 'http://loinc.org',
+                code: '8310-5',
+                display: 'Body temperature',
+              }],
+            },
+            valueQuantity: {
+              value: vitals.temperature,
+              unit: 'Cel',
+              system: 'http://unitsofmeasure.org',
+              code: 'Cel',
+            },
+            interpretation: [{
+              coding: [{
+                system: 'http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation',
+                code: vitals.temperature > 37.5 ? 'H' : vitals.temperature < 36.5 ? 'L' : 'N',
+                display: vitals.temperature > 37.5 ? 'High' : vitals.temperature < 36.5 ? 'Low' : 'Normal',
+              }],
+            }],
+          },
+        ],
+        analysis: result.analysis,
+        overallStatus: result.overallRisk,
+        deviceInfo: {
+          deviceId: `SIM-${Date.now()}`,
+          deviceType: 'IoT Simulator',
+          manufacturer: 'Djaja Diagnostics',
+        },
+      };
+
+      const response = await fetch(`${apiUrl}/api/observations`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(observationData),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save observation');
+      }
+
+      const data = await response.json();
+      setObservationSaved(true);
+
+      toast.success('Diagnostic observation saved successfully!', { 
+        id: 'save-observation',
+        duration: 3000,
+      });
+    } catch (error) {
+      console.error('Error saving observation:', error);
+      toast.error('Failed to save observation', { 
+        id: 'save-observation',
+        duration: 4000,
+      });
+    } finally {
+      setIsSavingObservation(false);
+    }
   };
 
   const downloadPDF = () => {
@@ -962,7 +1179,7 @@ export default function DeviceSimulator() {
 
       {/* Comprehensive Summary Modal - Shows only after comprehensive analysis completes */}
       <Dialog open={showSummaryModal} onOpenChange={setShowSummaryModal}>
-        <DialogContent className="max-w-4xl max-h-[90vh] p-0 gap-0">
+        <DialogContent className="max-w-4xl max-h-[90vh] p-0 gap-0 overflow-hidden">
           <DialogHeader className="px-6 pt-6 pb-4 border-b bg-white">
             <div className="text-center">
               <DialogTitle className="text-2xl font-bold text-gray-900">Patient Diagnostic Report</DialogTitle>
@@ -1202,16 +1419,55 @@ export default function DeviceSimulator() {
             </div>
           )}
 
-          <div className="bg-gray-50 border-t p-4 flex justify-end gap-3">
+          <div className="bg-gray-50 border-t p-4 flex justify-between">
             <Button onClick={() => setShowSummaryModal(false)} variant="outline">
               Close
             </Button>
-            <Button onClick={downloadPDF} className="bg-blue-600 hover:bg-blue-700">
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Download PDF
-            </Button>
+            <div className="flex gap-3">
+              {observationSaved && (
+                <span className="flex items-center gap-2 text-sm text-green-600 font-medium mr-2">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  Observation Saved
+                </span>
+              )}
+              <Button 
+                onClick={finishDiagnostic} 
+                disabled={isSavingObservation || observationSaved || !selectedPatient}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {isSavingObservation ? (
+                  <>
+                    <svg className="w-4 h-4 mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Saving...
+                  </>
+                ) : observationSaved ? (
+                  <>
+                    <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                    Saved
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Finish Diagnostic
+                  </>
+                )}
+              </Button>
+              <Button onClick={downloadPDF} className="bg-blue-600 hover:bg-blue-700">
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Download PDF
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

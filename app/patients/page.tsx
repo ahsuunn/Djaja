@@ -34,6 +34,44 @@ interface Patient {
   };
 }
 
+interface Observation {
+  _id: string;
+  observationId: string;
+  status: string;
+  testType: string;
+  effectiveDateTime: string;
+  measurements?: {
+    bloodPressure?: { systolic: number; diastolic: number };
+    heartRate?: { value: number };
+    spO2?: { value: number };
+    temperature?: { value: number };
+  };
+  component?: Array<{
+    code: {
+      coding: Array<{
+        code: string;
+        display: string;
+      }>;
+    };
+    valueQuantity: {
+      value: number;
+      unit: string;
+    };
+    interpretation?: Array<{
+      coding: Array<{
+        code: string;
+        display: string;
+      }>;
+    }>;
+  }>;
+  overallStatus: string;
+  performedBy?: {
+    name: string;
+    role: string;
+  };
+  createdAt: string;
+}
+
 export default function PatientsPage() {
   const searchParams = useSearchParams();
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -43,6 +81,8 @@ export default function PatientsPage() {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [observations, setObservations] = useState<Observation[]>([]);
+  const [loadingObservations, setLoadingObservations] = useState(false);
   const [formData, setFormData] = useState({
     // FHIR Identifiers
     nik: '',
@@ -139,6 +179,43 @@ export default function PatientsPage() {
       patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       patient.patientId.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const fetchPatientObservations = async (patientId: string) => {
+    try {
+      setLoadingObservations(true);
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${apiUrl}/api/patients/${patientId}/observations`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch observations');
+      }
+
+      const data = await response.json();
+      setObservations(data.observations || []);
+    } catch (error) {
+      console.error('Fetch observations error:', error);
+      setObservations([]);
+    } finally {
+      setLoadingObservations(false);
+    }
+  };
+
+  // Fetch observations when patient is selected
+  useEffect(() => {
+    if (selectedPatient) {
+      fetchPatientObservations(selectedPatient._id);
+    } else {
+      setObservations([]);
+    }
+  }, [selectedPatient]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -811,34 +888,105 @@ export default function PatientsPage() {
 
                 <Card>
                   <CardHeader>
-                    <CardTitle>Recent Test Results</CardTitle>
-                    <CardDescription>Last 5 diagnostic observations</CardDescription>
+                    <CardTitle className="flex items-center gap-2">
+                      Observation History
+                      {loadingObservations && <Loader2 className="w-4 h-4 animate-spin" />}
+                    </CardTitle>
+                    <CardDescription>Diagnostic observations from IoT devices</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-3">
-                      {[
-                        { date: '2025-11-15', type: 'Blood Pressure', result: '125/82 mmHg', status: 'normal' },
-                        { date: '2025-11-10', type: 'Glucose', result: '105 mg/dL', status: 'caution' },
-                        { date: '2025-11-05', type: 'Heart Rate', result: '78 bpm', status: 'normal' },
-                      ].map((test, index) => (
-                        <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                          <div>
-                            <div className="font-medium">{test.type}</div>
-                            <div className="text-sm text-muted-foreground">{test.date}</div>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-medium">{test.result}</div>
-                            <div
-                              className={`text-xs ${
-                                test.status === 'normal' ? 'text-green-600' : 'text-orange-600'
-                              }`}
-                            >
-                              {test.status === 'normal' ? '✓ Normal' : '⚠ Caution'}
+                    {loadingObservations ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                        <span className="ml-2 text-muted-foreground">Loading observations...</span>
+                      </div>
+                    ) : observations.length > 0 ? (
+                      <div className="space-y-3">
+                        {observations.map((obs) => {
+                          // Extract vital signs from component array
+                          const getBPValue = () => {
+                            const systolic = obs.component?.find(c => c.code.coding[0].code === '8480-6');
+                            const diastolic = obs.component?.find(c => c.code.coding[0].code === '8462-4');
+                            if (systolic && diastolic) {
+                              return `${systolic.valueQuantity.value}/${diastolic.valueQuantity.value} mmHg`;
+                            }
+                            return obs.measurements?.bloodPressure 
+                              ? `${obs.measurements.bloodPressure.systolic}/${obs.measurements.bloodPressure.diastolic} mmHg`
+                              : 'N/A';
+                          };
+
+                          const getHRValue = () => {
+                            const hr = obs.component?.find(c => c.code.coding[0].code === '8867-4');
+                            if (hr) return `${hr.valueQuantity.value} ${hr.valueQuantity.unit}`;
+                            return obs.measurements?.heartRate ? `${obs.measurements.heartRate.value} bpm` : 'N/A';
+                          };
+
+                          const getSpO2Value = () => {
+                            const spo2 = obs.component?.find(c => c.code.coding[0].code === '59408-5');
+                            if (spo2) return `${spo2.valueQuantity.value}%`;
+                            return obs.measurements?.spO2 ? `${obs.measurements.spO2.value}%` : 'N/A';
+                          };
+
+                          const getTempValue = () => {
+                            const temp = obs.component?.find(c => c.code.coding[0].code === '8310-5');
+                            if (temp) return `${temp.valueQuantity.value}°C`;
+                            return obs.measurements?.temperature ? `${obs.measurements.temperature.value}°C` : 'N/A';
+                          };
+
+                          const getStatusColor = (status: string) => {
+                            switch (status) {
+                              case 'critical': return 'text-red-600 bg-red-50 border-red-200';
+                              case 'warning': return 'text-orange-600 bg-orange-50 border-orange-200';
+                              case 'caution': return 'text-yellow-600 bg-yellow-50 border-yellow-200';
+                              case 'normal': return 'text-green-600 bg-green-50 border-green-200';
+                              default: return 'text-gray-600 bg-gray-50 border-gray-200';
+                            }
+                          };
+
+                          return (
+                            <div key={obs._id} className={`p-4 border rounded-lg ${getStatusColor(obs.overallStatus)}`}>
+                              <div className="flex items-start justify-between mb-3">
+                                <div>
+                                  <div className="font-medium text-sm capitalize">{obs.testType?.replace('-', ' ') || 'Comprehensive'} Diagnostic</div>
+                                  <div className="text-xs text-muted-foreground mt-1">
+                                    {new Date(obs.effectiveDateTime || obs.createdAt).toLocaleString()}
+                                  </div>
+                                  {obs.performedBy && (
+                                    <div className="text-xs text-muted-foreground mt-1">
+                                      By: {obs.performedBy.name} ({obs.performedBy.role})
+                                    </div>
+                                  )}
+                                </div>
+                                <div className={`px-2 py-1 rounded text-xs font-medium uppercase ${getStatusColor(obs.overallStatus)}`}>
+                                  {obs.overallStatus}
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 text-sm">
+                                <div>
+                                  <span className="text-muted-foreground">BP:</span> <span className="font-medium">{getBPValue()}</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">HR:</span> <span className="font-medium">{getHRValue()}</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">SpO₂:</span> <span className="font-medium">{getSpO2Value()}</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Temp:</span> <span className="font-medium">{getTempValue()}</span>
+                                </div>
+                              </div>
+                              <div className="mt-2 text-xs text-muted-foreground">
+                                ID: {obs.observationId}
+                              </div>
                             </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        No diagnostic observations recorded yet
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -1009,8 +1157,6 @@ export default function PatientsPage() {
                       <SelectContent>
                         <SelectItem value="male">Male</SelectItem>
                         <SelectItem value="female">Female</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                        <SelectItem value="unknown">Unknown</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

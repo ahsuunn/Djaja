@@ -33,7 +33,7 @@ router.get('/', auth, async (req: Request, res: Response): Promise<void> => {
 // @route   POST /api/observations
 // @desc    Create new observation
 // @access  Private (nakes, doctor)
-router.post('/', auth, authorize('nakes', 'doctor'), async (req: Request, res: Response): Promise<void> => {
+router.post('/', auth, authorize('nakes', 'doctor', 'admin'), async (req: Request, res: Response): Promise<void> => {
   try {
     const observationData: any = {
       ...req.body,

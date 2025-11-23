@@ -1,6 +1,7 @@
 import express, { Request, Response, Router } from 'express';
 import { auth, authorize } from '../middleware/auth';
 import Patient from '../models/Patient';
+import Observation from '../models/Observation';
 import AuditLog from '../models/AuditLog';
 
 const router: Router = express.Router();
@@ -217,6 +218,35 @@ router.put('/:id', auth, authorize('nakes', 'admin', 'doctor'), async (req: Requ
     res.json({ message: 'Patient updated successfully', patient });
   } catch (error) {
     console.error('Update patient error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/patients/:id/observations
+// @desc    Get patient observations history
+// @access  Private
+router.get('/:id/observations', auth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { limit = '20', status } = req.query;
+    
+    const patient = await Patient.findById(req.params.id);
+    if (!patient) {
+      res.status(404).json({ message: 'Patient not found' });
+      return;
+    }
+
+    const filter: any = { patientId: patient._id };
+    if (status) filter.overallStatus = status;
+
+    const observations = await Observation.find(filter)
+      .populate('performedBy', 'name role')
+      .populate('reviewedBy', 'name role')
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit as string));
+
+    res.json({ observations, count: observations.length });
+  } catch (error) {
+    console.error('Get patient observations error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
