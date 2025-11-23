@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Users, FileText, Download, Search, AlertCircle, Loader2, RefreshCcw, RefreshCcwIcon, Plus, X } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Users, FileText, Download, Search, AlertCircle, Loader2, RefreshCcw, RefreshCcwIcon, Plus } from 'lucide-react';
 
 interface Patient {
   _id: string;
@@ -31,6 +33,7 @@ interface Patient {
 }
 
 export default function PatientsPage() {
+  const searchParams = useSearchParams();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -59,6 +62,14 @@ export default function PatientsPage() {
   useEffect(() => {
     fetchPatients();
   }, []);
+
+  // Check if we should auto-open the add patient modal
+  useEffect(() => {
+    const addNew = searchParams.get('addNew');
+    if (addNew === 'true') {
+      setShowAddModal(true);
+    }
+  }, [searchParams]);
 
   const fetchPatients = async () => {
     try {
@@ -493,23 +504,14 @@ export default function PatientsPage() {
       </div>
 
       {/* Add Patient Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-8 z-50">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b p-6 flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold text-primary">Add New Patient</h2>
-                <p className="text-sm text-muted-foreground">Fill in patient demographic and medical information</p>
-              </div>
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
+      <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
+        <DialogContent className="max-w-4xl max-h-[90vh] p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-4">
+            <DialogTitle className="text-2xl font-bold text-primary">Add New Patient</DialogTitle>
+            <DialogDescription>Fill in patient demographic and medical information</DialogDescription>
+          </DialogHeader>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-8">
+          <form onSubmit={handleSubmit} className="space-y-8 px-6 pb-6 overflow-y-auto dialog-scroll" style={{ maxHeight: 'calc(90vh - 120px)' }}>
               {/* Basic Information */}
               <div>
                 <h3 className="text-lg font-semibold mb-4">Basic Information</h3>
@@ -726,9 +728,8 @@ export default function PatientsPage() {
                 </Button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

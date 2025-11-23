@@ -4,21 +4,13 @@ import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Video, MessageSquare, Phone, PhoneOff, Mic, MicOff, VideoOff, Upload, Send, User, Search, UserPlus, CheckCircle2, X } from 'lucide-react';
+import { Video, MessageSquare, Phone, PhoneOff, Mic, MicOff, VideoOff, Upload, Send, User } from 'lucide-react';
+import PatientSelector, { Patient } from '@/components/PatientSelector';
 
 declare global {
   interface Window {
     JitsiMeetExternalAPI: any;
   }
-}
-
-interface Patient {
-  _id: string;
-  patientId: string;
-  name: string;
-  gender: string;
-  bloodType?: string;
-  contactNumber?: string;
 }
 
 export default function TelemedicinePage() {
@@ -33,11 +25,7 @@ export default function TelemedicinePage() {
   const scriptRef = useRef<HTMLScriptElement | null>(null);
   
   // Patient state
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const [patientSearchTerm, setPatientSearchTerm] = useState('');
-  const [showPatientList, setShowPatientList] = useState(false);
-  const [loadingPatients, setLoadingPatients] = useState(false);
 
   useEffect(() => {
     // Check if script is already loaded
@@ -91,47 +79,6 @@ export default function TelemedicinePage() {
       }
     };
   }, []);
-
-  // Fetch patients on mount
-  useEffect(() => {
-    fetchPatients();
-  }, []);
-
-  const fetchPatients = async () => {
-    try {
-      setLoadingPatients(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        console.error('No auth token found');
-        return;
-      }
-
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-      const response = await fetch(`${apiUrl}/api/patients`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch patients');
-      }
-
-      const data = await response.json();
-      setPatients(data.patients || []);
-    } catch (error) {
-      console.error('Fetch patients error:', error);
-    } finally {
-      setLoadingPatients(false);
-    }
-  };
-
-  const filteredPatients = patients.filter(
-    (p) =>
-      p.name.toLowerCase().includes(patientSearchTerm.toLowerCase()) ||
-      p.patientId.toLowerCase().includes(patientSearchTerm.toLowerCase())
-  );
 
   const startCall = () => {
     if (!selectedPatient) {
@@ -301,100 +248,15 @@ export default function TelemedicinePage() {
         </div>
 
         {/* Patient Selection */}
-        <Card className="mb-8 border-2 border-primary/30">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="w-5 h-5" />
-              Patient Selection
-            </CardTitle>
-            <CardDescription>
-              Select a patient for the telemedicine consultation
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-4 items-start">
-              <div className="flex-1 relative">
-                <div className="relative">
-                  <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search patients by name or ID..."
-                    value={patientSearchTerm}
-                    onChange={(e) => {
-                      setPatientSearchTerm(e.target.value);
-                      setShowPatientList(true);
-                    }}
-                    onFocus={() => setShowPatientList(true)}
-                    className="pl-10"
-                  />
-                </div>
-                
-                {showPatientList && patientSearchTerm && (
-                  <div className="absolute z-10 w-full mt-2 bg-white border rounded-lg shadow-lg max-h-64 overflow-y-auto">
-                    {loadingPatients ? (
-                      <div className="p-4 text-center text-muted-foreground">Loading patients...</div>
-                    ) : filteredPatients.length === 0 ? (
-                      <div className="p-4 text-center text-muted-foreground">No patients found</div>
-                    ) : (
-                      filteredPatients.map((patient) => (
-                        <button
-                          key={patient._id}
-                          onClick={() => {
-                            setSelectedPatient(patient);
-                            setPatientSearchTerm('');
-                            setShowPatientList(false);
-                          }}
-                          className="w-full p-3 text-left hover:bg-muted transition-colors border-b last:border-b-0"
-                        >
-                          <div className="font-medium">{patient.name}</div>
-                          <div className="text-sm text-muted-foreground">
-                            ID: {patient.patientId} | {patient.gender} | {patient.bloodType || 'N/A'}
-                          </div>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-              
-              <Button
-                onClick={() => window.open('/patients', '_blank')}
-                variant="outline"
-                className="flex-shrink-0"
-              >
-                <UserPlus className="w-4 h-4 mr-2" />
-                Add Patient
-              </Button>
-            </div>
-
-            {/* Selected Patient Display */}
-            {selectedPatient ? (
-              <div className="mt-4 p-4 bg-primary/5 border border-primary/20 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-green-600" />
-                    <div>
-                      <div className="font-semibold">{selectedPatient.name}</div>
-                      <div className="text-sm text-muted-foreground">
-                        ID: {selectedPatient.patientId} | {selectedPatient.gender} | {selectedPatient.bloodType || 'N/A'}
-                      </div>
-                    </div>
-                  </div>
-                  <Button
-                    onClick={() => setSelectedPatient(null)}
-                    variant="ghost"
-                    size="sm"
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="mt-4 p-4 bg-muted/50 border border-dashed rounded-lg text-center text-muted-foreground">
-                ⚠️ Please select a patient before starting a consultation
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <div className="mb-8">
+          <PatientSelector
+            selectedPatient={selectedPatient}
+            onSelectPatient={setSelectedPatient}
+            title="Patient Selection"
+            description="Select a patient for the telemedicine consultation"
+            emptyStateMessage="Please select a patient before starting a consultation"
+          />
+        </div>
 
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Video Call Area */}
@@ -429,10 +291,10 @@ export default function TelemedicinePage() {
                       {isJitsiLoaded ? 'Start Video Call' : 'Loading...'}
                     </Button>
                     {!selectedPatient && (
-                      <p className="text-sm text-amber-600 mt-4">⚠️ Patient selection is required</p>
+                      <p className="text-sm text-amber-600 mt-4">Patient selection is required</p>
                     )}
                     {!isJitsiLoaded && selectedPatient && (
-                      <p className="text-sm text-amber-600 mt-4">⏳ Please wait for video system to load</p>
+                      <p className="text-sm text-amber-600 mt-4">Please wait for video system to load</p>
                     )}
                   </div>
                 ) : (

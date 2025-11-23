@@ -59,6 +59,7 @@ export interface VitalHistory {
   spO2: DataPoint[];
   temperature: DataPoint[];
   ecg: DataPoint[];
+  stethoscope: DataPoint[];
 }
 
 export interface StreamingState {
@@ -67,6 +68,7 @@ export interface StreamingState {
   spO2: boolean;
   temperature: boolean;
   ekg: boolean;
+  stethoscope: boolean;
 }
 
 export interface Patient {

@@ -1,14 +1,19 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Activity, Heart, Droplet, Stethoscope, Zap, Play, Pause, Wifi, WifiOff, Thermometer, Search, UserPlus, User } from 'lucide-react';
+import { Activity, Heart, Droplet, Stethoscope, Zap, Play, Pause, Wifi, WifiOff, Thermometer, FileText } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import io, { Socket } from 'socket.io-client';
-import { DiagnosticResult, Patient, StreamingState, VitalHistory, VitalSigns } from './types';
+import { DiagnosticResult, StreamingState, VitalHistory, VitalSigns } from './types';
 import { generateRandomVitals, generatePartialVitals, addToHistory, generateECGPoint, getStatusColor } from './utils';
+import PatientSelector, { Patient } from '@/components/PatientSelector';
+import { VitalCard } from '@/components/device-simulator/VitalCard';
+import { IndicatorControlPanel } from '@/components/device-simulator/IndicatorControlPanel';
+import { StreamingIndicator } from '@/components/device-simulator/StreamingIndicator';
 
 export default function DeviceSimulator() {
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -28,6 +33,7 @@ export default function DeviceSimulator() {
     spO2: false,
     temperature: false,
     ekg: false,
+    stethoscope: false,
   });
   const [streamInterval, setStreamInterval] = useState(2000); // ms
   const [vitalHistory, setVitalHistory] = useState<VitalHistory>({
@@ -36,6 +42,7 @@ export default function DeviceSimulator() {
     spO2: [],
     temperature: [],
     ecg: [],
+    stethoscope: [],
   });
   const streamIntervalsRef = useRef<Record<string, NodeJS.Timeout | null>>({
     bloodPressure: null,
@@ -43,16 +50,13 @@ export default function DeviceSimulator() {
     spO2: null,
     temperature: null,
     ekg: null,
+    stethoscope: null,
   });
   const ecgIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isComprehensiveAnalysisRef = useRef(false);
   
   // Patient state
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const [patientSearchTerm, setPatientSearchTerm] = useState('');
-  const [showPatientList, setShowPatientList] = useState(false);
-  const [loadingPatients, setLoadingPatients] = useState(false);
   
   // Comprehensive analysis state
   const [isCollectingVitals, setIsCollectingVitals] = useState(false);
@@ -89,41 +93,6 @@ export default function DeviceSimulator() {
       newSocket.close();
     };
   }, []);
-
-  // Fetch patients on mount
-  useEffect(() => {
-    fetchPatients();
-  }, []);
-
-  const fetchPatients = async () => {
-    try {
-      setLoadingPatients(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        console.error('No auth token found');
-        return;
-      }
-
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-      const response = await fetch(`${apiUrl}/api/patients`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch patients');
-      }
-
-      const data = await response.json();
-      setPatients(data.patients || []);
-    } catch (error) {
-      console.error('Fetch patients error:', error);
-    } finally {
-      setLoadingPatients(false);
-    }
-  };
 
   const handleGenerateRandomVitals = () => {
     setVitals(generateRandomVitals());
@@ -172,76 +141,319 @@ export default function DeviceSimulator() {
       <head>
         <title>Medical Summary - ${selectedPatient?.name || 'Patient'}</title>
         <style>
-          body { font-family: Arial, sans-serif; padding: 40px; line-height: 1.6; }
-          .header { text-align: center; margin-bottom: 30px; border-bottom: 3px solid #333; padding-bottom: 20px; }
-          .risk-badge { display: inline-block; padding: 8px 16px; border-radius: 20px; font-weight: bold; }
-          .critical { background: #dc2626; color: white; }
-          .high { background: #ea580c; color: white; }
-          .moderate { background: #ca8a04; color: white; }
-          .low { background: #16a34a; color: white; }
-          .section { margin: 30px 0; page-break-inside: avoid; }
-          .section-title { font-size: 18px; font-weight: bold; color: #333; margin-bottom: 15px; border-bottom: 2px solid #eee; padding-bottom: 8px; }
-          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 15px 0; }
-          .info-item { padding: 10px; background: #f9f9f9; border-left: 3px solid #3b82f6; }
-          .indicator { margin: 10px 0; padding: 15px; border-left: 4px solid #3b82f6; background: #f0f9ff; }
-          .vital { padding: 10px; margin: 8px 0; border-radius: 8px; }
-          .normal { background: #f0fdf4; border-left: 4px solid #16a34a; }
-          .caution { background: #fefce8; border-left: 4px solid #ca8a04; }
-          .warning { background: #fff7ed; border-left: 4px solid #ea580c; }
-          .critical-vital { background: #fef2f2; border-left: 4px solid #dc2626; }
-          .prescription { margin: 15px 0; padding: 15px; border: 1px solid #ddd; border-radius: 8px; }
-          .recommendation { margin: 10px 0; padding: 12px; border-left: 4px solid #8b5cf6; background: #faf5ff; }
-          ul { margin: 10px 0; padding-left: 20px; }
-          @media print { body { padding: 20px; } }
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            padding: 48px; 
+            line-height: 1.6; 
+            color: #1a1a1a;
+            background: white;
+            font-size: 14px;
+          }
+          .header { 
+            margin-bottom: 48px; 
+            padding-bottom: 24px; 
+            border-bottom: 1px solid #e5e5e5; 
+          }
+          .header h1 { 
+            font-size: 28px; 
+            font-weight: 600; 
+            color: #000; 
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+          }
+          .header p { 
+            color: #666; 
+            font-size: 13px; 
+          }
+          .risk-badge { 
+            display: inline-block; 
+            padding: 6px 14px; 
+            border-radius: 6px; 
+            font-weight: 500; 
+            font-size: 12px;
+            letter-spacing: 0.5px;
+          }
+          .critical { background: #fee; color: #dc2626; border: 1px solid #fcc; }
+          .high { background: #fff4ed; color: #ea580c; border: 1px solid #fed7aa; }
+          .moderate { background: #fefce8; color: #ca8a04; border: 1px solid #fef08a; }
+          .low { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+          .section { 
+            margin: 36px 0; 
+            page-break-inside: avoid; 
+          }
+          .section-title { 
+            font-size: 16px; 
+            font-weight: 600; 
+            color: #000; 
+            margin-bottom: 16px; 
+            letter-spacing: -0.3px;
+          }
+          .info-grid { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            gap: 12px; 
+            margin: 16px 0; 
+          }
+          .info-item { 
+            padding: 12px 16px; 
+            background: #fafafa; 
+            border-radius: 6px;
+            border: 1px solid #f0f0f0;
+          }
+          .info-item strong { 
+            color: #666; 
+            font-weight: 500; 
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: block;
+            margin-bottom: 4px;
+          }
+          .info-item span { 
+            color: #000; 
+            font-size: 14px; 
+          }
+          .vital { 
+            padding: 14px 16px; 
+            margin: 8px 0; 
+            border-radius: 6px; 
+            border: 1px solid;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          }
+          .vital-label { font-weight: 500; color: #000; }
+          .vital-value { 
+            font-family: 'SF Mono', Monaco, monospace; 
+            font-size: 13px;
+            color: #666;
+          }
+          .vital-message { 
+            font-size: 12px; 
+            color: #666; 
+            margin-top: 6px;
+            display: block;
+          }
+          .normal { background: #f9fef9; border-color: #d1fad1; }
+          .caution { background: #fefef9; border-color: #fef4c7; }
+          .warning { background: #fffaf5; border-color: #fed7aa; }
+          .critical-vital { background: #fef9f9; border-color: #fecaca; }
+          .indicator { 
+            margin: 12px 0; 
+            padding: 16px; 
+            border-radius: 6px; 
+            background: #fafafa;
+            border: 1px solid #f0f0f0;
+          }
+          .indicator-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+          }
+          .indicator-title { font-weight: 500; color: #000; font-size: 14px; }
+          .likelihood-badge {
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .likelihood-critical { background: #fee; color: #dc2626; }
+          .likelihood-high { background: #fff4ed; color: #ea580c; }
+          .likelihood-moderate { background: #fefce8; color: #ca8a04; }
+          .likelihood-low { background: #f0f9ff; color: #0369a1; }
+          .indicator ul { 
+            list-style: none; 
+            margin-top: 8px;
+          }
+          .indicator li { 
+            padding: 4px 0;
+            padding-left: 16px;
+            position: relative;
+            font-size: 13px;
+            color: #666;
+          }
+          .indicator li:before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: #999;
+          }
+          .prescription { 
+            margin: 16px 0; 
+            padding: 16px; 
+            border: 1px solid #e5e5e5; 
+            border-radius: 6px; 
+            background: #fafafa;
+          }
+          .prescription h3 { 
+            font-size: 15px; 
+            font-weight: 600; 
+            color: #000; 
+            margin-bottom: 10px; 
+          }
+          .prescription-meta {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 10px;
+            font-size: 12px;
+          }
+          .prescription-meta-item { color: #666; }
+          .prescription-meta-item strong { color: #999; font-weight: 500; }
+          .prescription p { 
+            font-size: 13px; 
+            color: #666; 
+            line-height: 1.5;
+          }
+          .recommendation { 
+            margin: 12px 0; 
+            padding: 14px 16px; 
+            border-radius: 6px; 
+            background: #fafafa;
+            border: 1px solid #e5e5e5;
+          }
+          .rec-header {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 8px;
+          }
+          .urgency-badge {
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .urgency-immediate { background: #fee; color: #dc2626; }
+          .urgency-urgent { background: #fff4ed; color: #ea580c; }
+          .urgency-routine { background: #f0f9ff; color: #0369a1; }
+          .rec-type { 
+            font-weight: 500; 
+            font-size: 13px; 
+            color: #000; 
+          }
+          .rec-message { 
+            font-size: 13px; 
+            color: #666; 
+            line-height: 1.6;
+          }
+          .note { 
+            font-size: 12px; 
+            color: #999; 
+            font-style: italic; 
+            margin-top: 16px;
+            padding: 12px;
+            background: #fafafa;
+            border-radius: 6px;
+            border: 1px solid #f0f0f0;
+          }
+          .footer { 
+            margin-top: 64px; 
+            padding-top: 24px; 
+            border-top: 1px solid #e5e5e5; 
+            text-align: center; 
+            color: #999;
+            font-size: 12px;
+          }
+          .footer p { margin: 4px 0; }
+          @media print { 
+            body { padding: 32px; } 
+            .section { page-break-inside: avoid; }
+          }
         </style>
       </head>
       <body>
         <div class="header">
           <h1>Medical Diagnostic Summary</h1>
-          <p><strong>Date:</strong> ${new Date(result.processedAt).toLocaleString()}</p>
+          <p>${new Date(result.processedAt).toLocaleString('en-US', { 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric', 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          })}</p>
         </div>
         
         <div class="section">
           <div class="section-title">Patient Information</div>
           <div class="info-grid">
-            <div class="info-item"><strong>Name:</strong> ${selectedPatient?.name || 'Demo Patient'}</div>
-            <div class="info-item"><strong>Patient ID:</strong> ${selectedPatient?.patientId || 'demo-patient'}</div>
-            <div class="info-item"><strong>Gender:</strong> ${selectedPatient?.gender || 'N/A'}</div>
-            <div class="info-item"><strong>Blood Type:</strong> ${selectedPatient?.bloodType || 'N/A'}</div>
+            <div class="info-item">
+              <strong>Name</strong>
+              <span>${selectedPatient?.name || 'Demo Patient'}</span>
+            </div>
+            <div class="info-item">
+              <strong>Patient ID</strong>
+              <span>${selectedPatient?.patientId || 'demo-patient'}</span>
+            </div>
+            <div class="info-item">
+              <strong>Gender</strong>
+              <span>${selectedPatient?.gender || 'N/A'}</span>
+            </div>
+            <div class="info-item">
+              <strong>Blood Type</strong>
+              <span>${selectedPatient?.bloodType || 'N/A'}</span>
+            </div>
           </div>
         </div>
         
         <div class="section">
           <div class="section-title">Overall Assessment</div>
-          <p><span class="risk-badge ${result.overallRisk}">${result.overallRisk.toUpperCase()} RISK</span></p>
-          <p style="margin-top: 15px;">${result.summary}</p>
+          <p style="margin-bottom: 12px;">
+            <span class="risk-badge ${result.overallRisk}">${result.overallRisk.toUpperCase()} RISK</span>
+          </p>
+          <p style="color: #666; line-height: 1.7;">${result.summary}</p>
         </div>
         
         <div class="section">
-          <div class="section-title">Vital Signs Readings</div>
+          <div class="section-title">Vital Signs</div>
           ${result.analysis.bloodPressure ? `
             <div class="vital ${result.analysis.bloodPressure.status === 'critical' ? 'critical-vital' : result.analysis.bloodPressure.status}">
-              <strong>Blood Pressure:</strong> ${vitals.bloodPressure.systolic}/${vitals.bloodPressure.diastolic} mmHg - ${result.analysis.bloodPressure.message}
+              <div>
+                <span class="vital-label">Blood Pressure</span>
+                <span class="vital-message">${result.analysis.bloodPressure.message}</span>
+              </div>
+              <span class="vital-value">${vitals.bloodPressure.systolic}/${vitals.bloodPressure.diastolic} mmHg</span>
             </div>
           ` : ''}
           ${result.analysis.heartRate ? `
             <div class="vital ${result.analysis.heartRate.status === 'critical' ? 'critical-vital' : result.analysis.heartRate.status}">
-              <strong>Heart Rate:</strong> ${vitals.heartRate} bpm - ${result.analysis.heartRate.message}
+              <div>
+                <span class="vital-label">Heart Rate</span>
+                <span class="vital-message">${result.analysis.heartRate.message}</span>
+              </div>
+              <span class="vital-value">${vitals.heartRate} bpm</span>
             </div>
           ` : ''}
           ${result.analysis.spO2 ? `
             <div class="vital ${result.analysis.spO2.status === 'critical' ? 'critical-vital' : result.analysis.spO2.status}">
-              <strong>Oxygen Saturation:</strong> ${vitals.spO2}% - ${result.analysis.spO2.message}
+              <div>
+                <span class="vital-label">Oxygen Saturation</span>
+                <span class="vital-message">${result.analysis.spO2.message}</span>
+              </div>
+              <span class="vital-value">${vitals.spO2}%</span>
             </div>
           ` : ''}
           ${result.analysis.temperature ? `
             <div class="vital ${result.analysis.temperature.status === 'critical' ? 'critical-vital' : result.analysis.temperature.status}">
-              <strong>Temperature:</strong> ${vitals.temperature}°C - ${result.analysis.temperature.message}
+              <div>
+                <span class="vital-label">Temperature</span>
+                <span class="vital-message">${result.analysis.temperature.message}</span>
+              </div>
+              <span class="vital-value">${vitals.temperature}°C</span>
             </div>
           ` : ''}
           ${result.analysis.ekg ? `
             <div class="vital ${result.analysis.ekg.status === 'critical' ? 'critical-vital' : result.analysis.ekg.status}">
-              <strong>EKG Rhythm:</strong> ${vitals.ekg.rhythm} - ${result.analysis.ekg.message}
+              <div>
+                <span class="vital-label">EKG Rhythm</span>
+                <span class="vital-message">${result.analysis.ekg.message}</span>
+              </div>
+              <span class="vital-value" style="text-transform: capitalize;">${vitals.ekg.rhythm}</span>
             </div>
           ` : ''}
         </div>
@@ -251,7 +463,10 @@ export default function DeviceSimulator() {
             <div class="section-title">Disease Indicators</div>
             ${result.diseaseIndicators.map(indicator => `
               <div class="indicator">
-                <strong>${indicator.condition}</strong> <span style="background: #3b82f6; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px;">${indicator.likelihood}</span>
+                <div class="indicator-header">
+                  <span class="indicator-title">${indicator.condition}</span>
+                  <span class="likelihood-badge likelihood-${indicator.likelihood}">${indicator.likelihood}</span>
+                </div>
                 <ul>
                   ${indicator.indicators.map(ind => `<li>${ind}</li>`).join('')}
                 </ul>
@@ -265,12 +480,18 @@ export default function DeviceSimulator() {
             <div class="section-title">Recommended Medications</div>
             ${result.prescriptions.map(med => `
               <div class="prescription">
-                <h3 style="margin: 0 0 10px 0; color: #1e40af;">${med.name}</h3>
-                <p><strong>Dosage:</strong> ${med.dosage} | <strong>Frequency:</strong> ${med.frequency} | <strong>Duration:</strong> ${med.duration}</p>
-                <p><strong>Instructions:</strong> ${med.instructions}</p>
+                <h3>${med.name}</h3>
+                <div class="prescription-meta">
+                  <div class="prescription-meta-item"><strong>Dosage</strong> ${med.dosage}</div>
+                  <div class="prescription-meta-item"><strong>Frequency</strong> ${med.frequency}</div>
+                  <div class="prescription-meta-item"><strong>Duration</strong> ${med.duration}</div>
+                </div>
+                <p>${med.instructions}</p>
               </div>
             `).join('')}
-            <p style="font-style: italic; color: #666; margin-top: 15px;">⚠️ Note: These are automated recommendations. Consult with a licensed physician before taking any medication.</p>
+            <div class="note">
+              Note: These are automated recommendations. Consult with a licensed physician before taking any medication.
+            </div>
           </div>
         ` : ''}
         
@@ -279,16 +500,22 @@ export default function DeviceSimulator() {
             <div class="section-title">Medical Recommendations</div>
             ${result.recommendations.map(rec => `
               <div class="recommendation">
-                <p><strong style="background: #8b5cf6; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px;">${rec.urgency.toUpperCase()}</strong> 
-                <strong>${rec.type === 'teleconsultation' ? '📞 Teleconsultation' : rec.type === 'hospital_referral' ? '🏥 Hospital Referral' : rec.type === 'follow_up' ? '📅 Follow-up' : '💡 Lifestyle'}</strong></p>
-                <p>${rec.message}</p>
+                <div class="rec-header">
+                  <span class="urgency-badge urgency-${rec.urgency}">${rec.urgency}</span>
+                  <span class="rec-type">${
+                    rec.type === 'teleconsultation' ? 'Teleconsultation' :
+                    rec.type === 'hospital_referral' ? 'Hospital Referral' :
+                    rec.type === 'follow_up' ? 'Follow-up' : 'Lifestyle'
+                  }</span>
+                </div>
+                <p class="rec-message">${rec.message}</p>
               </div>
             `).join('')}
           </div>
         ` : ''}
         
-        <div style="margin-top: 50px; padding-top: 20px; border-top: 2px solid #eee; text-align: center; color: #666;">
-          <p>This report was generated automatically by Djaja Diagnostics IoT System</p>
+        <div class="footer">
+          <p>Djaja Diagnostics IoT System</p>
           <p>Report ID: SIM-${Date.now()}</p>
         </div>
       </body>
@@ -350,6 +577,15 @@ export default function DeviceSimulator() {
       ecgIntervalRef.current = setInterval(() => {
         generateECGPoint(setVitalHistory);
       }, 16); // ~60 FPS
+    } else if (vitalType === 'stethoscope') {
+      // Stream stethoscope sound waveform
+      streamIntervalsRef.current[vitalType] = setInterval(() => {
+        const soundValue = Math.sin(Date.now() / 100) * 50 + Math.random() * 20;
+        setVitalHistory(prev => ({
+          ...prev,
+          stethoscope: [...prev.stethoscope.slice(-50), { timestamp: Date.now(), value: soundValue }]
+        }));
+      }, 50);
     } else {
       // Stream only the selected vital at specified interval (leave others unchanged)
       streamIntervalsRef.current[vitalType] = setInterval(() => {
@@ -390,6 +626,11 @@ export default function DeviceSimulator() {
         clearInterval(ecgIntervalRef.current);
         ecgIntervalRef.current = null;
       }
+    } else if (vitalType === 'stethoscope') {
+      if (streamIntervalsRef.current[vitalType]) {
+        clearInterval(streamIntervalsRef.current[vitalType]!);
+        streamIntervalsRef.current[vitalType] = null;
+      }
     } else {
       if (streamIntervalsRef.current[vitalType]) {
         clearInterval(streamIntervalsRef.current[vitalType]!);
@@ -414,137 +655,249 @@ export default function DeviceSimulator() {
 
   const anyStreaming = Object.values(isStreaming).some((s) => s);
 
+  const getVitalStatus = (vital: 'bp' | 'hr' | 'spo2' | 'temp'): 'inactive' | 'safe' | 'warning' | 'danger' => {
+    if (vital === 'bp') {
+      const sys = vitals.bloodPressure.systolic;
+      if (sys === 0) return 'inactive';
+      if (sys < 90 || sys > 140) return 'danger';
+      if (sys < 100 || sys > 130) return 'warning';
+      return 'safe';
+    }
+    if (vital === 'hr') {
+      const hr = vitals.heartRate;
+      if (hr === 0) return 'inactive';
+      if (hr < 60 || hr > 100) return 'danger';
+      if (hr < 65 || hr > 95) return 'warning';
+      return 'safe';
+    }
+    if (vital === 'spo2') {
+      const spo2 = vitals.spO2;
+      if (spo2 === 0) return 'inactive';
+      if (spo2 < 90) return 'danger';
+      if (spo2 < 95) return 'warning';
+      return 'safe';
+    }
+    if (vital === 'temp') {
+      const temp = vitals.temperature;
+      if (temp === 0) return 'inactive';
+      if (temp < 36 || temp > 38) return 'danger';
+      if (temp < 36.5 || temp > 37.5) return 'warning';
+      return 'safe';
+    }
+    return 'inactive';
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-8">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+      <div className="max-w-[1800px] mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-primary mb-2">IoT Device Simulator</h1>
-          <p className="text-muted-foreground">
-            Simulate medical device readings and see real-time AI analysis
-          </p>
-          <div className="flex items-center gap-2 mt-4">
-            <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-            <span className="text-sm">
-              {isConnected ? 'Connected to Cloud' : 'Disconnected'}
-            </span>
+        <div className="mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-slate-900 mb-1">IoT Device Simulator</h1>
+              <p className="text-slate-600 text-sm">Real-time medical device monitoring and AI diagnostics</p>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+                <span className="text-sm font-medium text-slate-700">
+                  {isConnected ? 'Cloud Connected' : 'Disconnected'}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Patient Selection */}
-        <Card className="mb-8 border-2 border-primary/30">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="w-5 h-5" />
-              Patient Selection
-            </CardTitle>
-            <CardDescription>
-              Select a patient to associate with device readings
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-4 items-start">
-              <div className="flex-1 relative">
-                <div className="relative">
-                  <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search patients by name or ID..."
-                    value={patientSearchTerm}
-                    onChange={(e) => {
-                      setPatientSearchTerm(e.target.value);
-                      setShowPatientList(true);
-                    }}
-                    onFocus={() => setShowPatientList(true)}
-                    className="pl-10"
-                  />
-                </div>
-                
-                {/* Patient Dropdown */}
-                {showPatientList && patientSearchTerm && (
-                  <div className="absolute z-10 w-full mt-2 bg-white border rounded-lg shadow-lg max-h-64 overflow-y-auto">
-                    {patients
-                      .filter((p) =>
-                        p.name.toLowerCase().includes(patientSearchTerm.toLowerCase()) ||
-                        p.patientId.toLowerCase().includes(patientSearchTerm.toLowerCase())
-                      )
-                      .map((patient) => (
-                        <div
-                          key={patient._id}
-                          onClick={() => {
-                            setSelectedPatient(patient);
-                            setPatientSearchTerm('');
-                            setShowPatientList(false);
-                          }}
-                          className="p-3 hover:bg-muted cursor-pointer border-b last:border-b-0"
-                        >
-                          <div className="font-medium">{patient.name}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {patient.patientId} • {patient.gender} • {patient.bloodType}
-                          </div>
-                        </div>
-                      ))}
-                    {patients.filter((p) =>
-                      p.name.toLowerCase().includes(patientSearchTerm.toLowerCase()) ||
-                      p.patientId.toLowerCase().includes(patientSearchTerm.toLowerCase())
-                    ).length === 0 && (
-                      <div className="p-4 text-center text-muted-foreground">
-                        No patients found
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              
-              <Button
-                onClick={() => window.open('/patients', '_blank')}
-                variant="outline"
-                className="flex-shrink-0"
-              >
-                <UserPlus className="w-4 h-4 mr-2" />
-                Add Patient
-              </Button>
-            </div>
+        <div className="mb-6">
+          <PatientSelector
+            selectedPatient={selectedPatient}
+            onSelectPatient={setSelectedPatient}
+            title="Patient Selection"
+            description="Select a patient to associate with device readings"
+            emptyStateMessage="No patient selected. Device readings will use demo patient ID."
+          />
+        </div>
 
-            {/* Selected Patient Display */}
-            {selectedPatient ? (
-              <div className="mt-4 p-4 bg-primary/5 border border-primary/20 rounded-lg">
+        {/* Main Grid Layout: Bento Grid + Control Panel */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6">
+          {/* Left Side: Bento Grid with Indicators */}
+          <div className="space-y-6">
+            {/* Top Row: Large EKG */}
+            <Card className="bg-white border-2 border-slate-200">
+              <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold text-lg">{selectedPatient.name}</div>
-                    <div className="text-sm text-muted-foreground">
-                      ID: {selectedPatient.patientId} • {selectedPatient.gender} • Blood Type: {selectedPatient.bloodType}
-                    </div>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Zap className="w-5 h-5 text-purple-600" />
+                    Electrocardiogram (EKG)
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-500 capitalize">{vitals.ekg.rhythm} rhythm</span>
+                    {isStreaming.ekg && <span className="flex h-2 w-2"><span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-purple-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span></span>}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setSelectedPatient(null)}
-                  >
-                    Clear
-                  </Button>
                 </div>
-              </div>
-            ) : (
-              <div className="mt-4 p-4 bg-muted/50 border border-dashed rounded-lg text-center text-muted-foreground">
-                No patient selected. Device readings will use demo patient ID.
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <div className="space-y-6">
-            {/* Global Controls */}
-            <Card className="border-2 border-primary/20">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Wifi className="w-5 h-5" />
-                  Global Settings
-                </CardTitle>
-                <CardDescription>Configure streaming interval and generate test data</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="pb-4">
+                <div className="h-48 bg-slate-900 rounded-lg">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={vitalHistory.ecg}>
+                      <defs>
+                        <linearGradient id="ecgGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <Area
+                        type="monotone"
+                        dataKey="value"
+                        stroke="#10b981"
+                        strokeWidth={2}
+                        fill="url(#ecgGradient)"
+                        isAnimationActive={false}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Second Row: Stethoscope Sound */}
+            <Card className="bg-white border-2 border-slate-200">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Stethoscope className="w-5 h-5 text-cyan-600" />
+                    Stethoscope Sound
+                  </CardTitle>
+                  {isStreaming.stethoscope && <span className="flex h-2 w-2"><span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-cyan-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span></span>}
+                </div>
+              </CardHeader>
+              <CardContent className="pb-4">
+                <div className="h-32 bg-gradient-to-r from-cyan-50 to-blue-50 rounded-lg">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={vitalHistory.stethoscope}>
+                      <defs>
+                        <linearGradient id="stethGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.6} />
+                          <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <Area
+                        type="monotone"
+                        dataKey="value"
+                        stroke="#06b6d4"
+                        strokeWidth={2}
+                        fill="url(#stethGradient)"
+                        isAnimationActive={false}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Third Row: Vital Signs Grid */}
+            <div className="grid grid-cols-2 gap-6">
+              {/* Blood Pressure */}
+              <VitalCard
+                icon={Activity}
+                iconColor="text-blue-600"
+                iconBgColor="bg-blue-100"
+                name="Blood Pressure"
+                value={`${vitals.bloodPressure.systolic === 0 ? '--' : vitals.bloodPressure.systolic}/${vitals.bloodPressure.diastolic === 0 ? '--' : vitals.bloodPressure.diastolic}`}
+                unit="mmHg"
+                status={getVitalStatus('bp')}
+                isStreaming={isStreaming.bloodPressure}
+                safeRangeText="90-140 / 60-90"
+                widthPercentage={vitals.bloodPressure.systolic === 0 ? '0%' : `${Math.min((vitals.bloodPressure.systolic / 140) * 100, 100)}%`}
+                historyData={vitalHistory.bloodPressure}
+                yDomain={[60, 180]}
+                yTicks={[60, 120, 180]}
+                gradientFrom="from-blue-50"
+                gradientTo="to-blue-200"
+                chartColor="#3b82f6"
+                streamingColor="bg-blue-400"
+              />
+
+              {/* Heart Rate */}
+              <VitalCard
+                icon={Heart}
+                iconColor="text-red-600"
+                iconBgColor="bg-red-100"
+                name="Heart Rate"
+                value={vitals.heartRate === 0 ? '--' : String(vitals.heartRate)}
+                unit="bpm"
+                status={getVitalStatus('hr')}
+                isStreaming={isStreaming.heartRate}
+                safeRangeText="60-100 bpm"
+                widthPercentage={vitals.heartRate === 0 ? '0%' : `${Math.min((vitals.heartRate / 100) * 100, 100)}%`}
+                historyData={vitalHistory.heartRate}
+                yDomain={[40, 120]}
+                yTicks={[40, 80, 120]}
+                gradientFrom="from-red-50"
+                gradientTo="to-red-200"
+                chartColor="#ef4444"
+                streamingColor="bg-red-400"
+              />
+
+              {/* SpO2 */}
+              <VitalCard
+                icon={Droplet}
+                iconColor="text-green-600"
+                iconBgColor="bg-green-100"
+                name="Oxygen Saturation"
+                value={vitals.spO2 === 0 ? '--' : String(vitals.spO2)}
+                unit="% SpO₂"
+                status={getVitalStatus('spo2')}
+                isStreaming={isStreaming.spO2}
+                safeRangeText="95-100%"
+                widthPercentage={vitals.spO2 === 0 ? '0%' : `${vitals.spO2}%`}
+                historyData={vitalHistory.spO2}
+                yDomain={[85, 100]}
+                yTicks={[85, 92, 100]}
+                gradientFrom="from-green-50"
+                gradientTo="to-green-200"
+                chartColor="#10b981"
+                streamingColor="bg-green-400"
+              />
+
+              {/* Temperature */}
+              <VitalCard
+                icon={Thermometer}
+                iconColor="text-orange-600"
+                iconBgColor="bg-orange-100"
+                name="Temperature"
+                value={vitals.temperature === 0 ? '--.-' : vitals.temperature.toFixed(1)}
+                unit="°C"
+                status={getVitalStatus('temp')}
+                isStreaming={isStreaming.temperature}
+                safeRangeText="36.5-37.5°C"
+                widthPercentage={vitals.temperature === 0 ? '0%' : `${Math.min(((vitals.temperature - 35) / 3) * 100, 100)}%`}
+                historyData={vitalHistory.temperature}
+                yDomain={[35, 40]}
+                yTicks={[35, 37.5, 40]}
+                gradientFrom="from-orange-50"
+                gradientTo="to-orange-200"
+                chartColor="#f97316"
+                streamingColor="bg-orange-400"
+              />
+            </div>
+          </div>
+
+          {/* Right Side: Control Panel */}
+          <div className="space-y-6">
+            <Card className="bg-white border-2 border-primary">
+              <CardHeader className="pb-4">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Wifi className="w-5 h-5" />
+                  Control Panel
+                </CardTitle>
+                <CardDescription>Manage device streaming and analysis</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Stream Interval */}
                 <div>
-                  <label className="text-sm font-medium">Stream Interval (ms)</label>
+                  <label className="text-sm font-medium text-slate-700">Stream Interval (ms)</label>
                   <Input
                     type="number"
                     value={streamInterval}
@@ -553,41 +906,131 @@ export default function DeviceSimulator() {
                     max="10000"
                     step="500"
                     disabled={anyStreaming}
+                    className="mt-1"
                   />
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className="text-xs text-slate-500 mt-1">
                     Data sent every {streamInterval / 1000} seconds
                   </p>
                 </div>
 
-                <div className="flex flex-col gap-2">
-                  <div className="flex gap-2">
-                    <Button onClick={handleGenerateRandomVitals} variant="outline" className="flex-1" disabled={!selectedPatient || anyStreaming || isCollectingVitals}>
-                      Generate Random
-                    </Button>
-                    <Button
-                      onClick={() => sendToCloud()}
-                      disabled={!selectedPatient || !isConnected || isSending || anyStreaming || isCollectingVitals}
-                      className="flex-1"
-                    >
-                      {isSending ? 'Processing...' : 'Send Single'}
-                    </Button>
-                  </div>
+                {/* Generate Random */}
+                <Button 
+                  onClick={handleGenerateRandomVitals} 
+                  variant="outline" 
+                  className="w-full" 
+                  disabled={!selectedPatient || anyStreaming || isCollectingVitals}
+                >
+                  <Zap className="w-4 h-4 mr-2" />
+                  Generate Random
+                </Button>
+
+                {/* Individual Indicator Controls */}
+                <div className="space-y-3 border-t pt-4">
+                  <p className="text-sm font-medium text-slate-700">Individual Indicators</p>
+                  
+                  <IndicatorControlPanel
+                    icon={Zap}
+                    iconColor="text-purple-600"
+                    name="ECG"
+                    bgColor="bg-purple-50"
+                    borderColor="border-purple-200"
+                    isStreaming={isStreaming.ekg}
+                    isDisabled={!selectedPatient || !isConnected}
+                    onStart={() => startVitalStreaming('ekg')}
+                    onStop={() => stopVitalStreaming('ekg')}
+                  />
+
+                  <IndicatorControlPanel
+                    icon={Stethoscope}
+                    iconColor="text-cyan-600"
+                    name="Stethoscope"
+                    bgColor="bg-cyan-50"
+                    borderColor="border-cyan-200"
+                    isStreaming={isStreaming.stethoscope}
+                    isDisabled={!selectedPatient || !isConnected}
+                    onStart={() => startVitalStreaming('stethoscope')}
+                    onStop={() => stopVitalStreaming('stethoscope')}
+                  />
+
+                  <IndicatorControlPanel
+                    icon={Activity}
+                    iconColor="text-blue-600"
+                    name="Blood Pressure"
+                    bgColor="bg-blue-50"
+                    borderColor="border-blue-200"
+                    isStreaming={isStreaming.bloodPressure}
+                    isDisabled={!selectedPatient || !isConnected}
+                    onStart={() => startVitalStreaming('bloodPressure')}
+                    onStop={() => stopVitalStreaming('bloodPressure')}
+                  />
+
+                  <IndicatorControlPanel
+                    icon={Heart}
+                    iconColor="text-red-600"
+                    name="Heart Rate"
+                    bgColor="bg-red-50"
+                    borderColor="border-red-200"
+                    isStreaming={isStreaming.heartRate}
+                    isDisabled={!selectedPatient || !isConnected}
+                    onStart={() => startVitalStreaming('heartRate')}
+                    onStop={() => stopVitalStreaming('heartRate')}
+                  />
+
+                  <IndicatorControlPanel
+                    icon={Droplet}
+                    iconColor="text-green-600"
+                    name="SpO₂"
+                    bgColor="bg-green-50"
+                    borderColor="border-green-200"
+                    isStreaming={isStreaming.spO2}
+                    isDisabled={!selectedPatient || !isConnected}
+                    onStart={() => startVitalStreaming('spO2')}
+                    onStop={() => stopVitalStreaming('spO2')}
+                  />
+
+                  <IndicatorControlPanel
+                    icon={Thermometer}
+                    iconColor="text-orange-600"
+                    name="Temperature"
+                    bgColor="bg-orange-50"
+                    borderColor="border-orange-200"
+                    isStreaming={isStreaming.temperature}
+                    isDisabled={!selectedPatient || !isConnected}
+                    onStart={() => startVitalStreaming('temperature')}
+                    onStop={() => stopVitalStreaming('temperature')}
+                  />
+                </div>
+
+                {/* Comprehensive Analysis */}
+                <div className="border-t pt-4 space-y-3">
                   <Button
                     onClick={startComprehensiveAnalysis}
                     disabled={!selectedPatient || !isConnected || isSending || anyStreaming || isCollectingVitals}
-                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                    className="w-full"
                   >
-                    {isCollectingVitals ? `Collecting Data... ${collectedReadings}/${totalReadingsNeeded}` : '🔍 Start Comprehensive Analysis'}
+                    {isCollectingVitals ? `Collecting... ${collectedReadings}/${totalReadingsNeeded}` : 'Start Comprehensive Analysis'}
                   </Button>
+                  {result && (
+                    <Button
+                      onClick={() => setShowSummaryModal(true)}
+                      variant="outline"
+                      className="w-full"
+                    >
+                      <FileText className="w-4 h-4 mr-2" />
+                      Open Summary Report
+                    </Button>
+                  )}
                   {!selectedPatient && (
-                    <p className="text-xs text-red-600 text-center mt-1">⚠️ Please select a patient first</p>
+                    <p className="text-xs text-red-600 text-center"> Please select a patient first</p>
                   )}
                 </div>
               </CardContent>
             </Card>
+          </div>
+        </div>
 
-            {/* Individual Vital Streaming Controls */}
-            <div className="space-y-4">
+            {/* Old cards section removed - functionality moved to control panel */}
+            <div className="hidden">
               {/* Blood Pressure */}
               <Card className="border-blue-200">
                 <CardContent className="p-4">
@@ -864,34 +1307,30 @@ export default function DeviceSimulator() {
                 </CardContent>
               </Card>
             </div>
-          </div>
-        </div>
+      </div>
 
       {/* Comprehensive Summary Modal - Shows only after comprehensive analysis completes */}
-      {showSummaryModal && result && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowSummaryModal(false)}>
-          <div className="bg-white rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <div className="sticky top-0 bg-white border-b p-6 flex items-center justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">Comprehensive Medical Summary</h2>
-                  <p className="text-sm text-gray-600">Generated: {new Date(result.processedAt).toLocaleString()}</p>
-                </div>
-                <div className="flex gap-2">
-                  <Button onClick={downloadPDF} variant="outline" size="sm">
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    Download PDF
-                  </Button>
-                  <Button onClick={() => setShowSummaryModal(false)} variant="ghost" size="sm">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </Button>
-                </div>
+      <Dialog open={showSummaryModal} onOpenChange={setShowSummaryModal}>
+        <DialogContent className="max-w-4xl max-h-[90vh] p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b">
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle className="text-2xl font-bold text-primary">Comprehensive Medical Summary</DialogTitle>
+                <DialogDescription>
+                  {result && `Generated: ${new Date(result.processedAt).toLocaleString()}`}
+                </DialogDescription>
               </div>
+              <Button onClick={downloadPDF} variant="outline" size="sm">
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Download PDF
+              </Button>
+            </div>
+          </DialogHeader>
 
-              <div className="p-6 space-y-6">
+          {result && (
+            <div className="p-6 space-y-6 overflow-y-auto dialog-scroll" style={{ maxHeight: 'calc(90vh - 180px)' }}>
                 {/* Patient Information */}
                 <div className="bg-gray-50 rounded-lg p-4 border">
                   <h3 className="font-semibold text-lg mb-3 text-gray-900">Patient Information</h3>
@@ -1075,22 +1514,22 @@ export default function DeviceSimulator() {
                     </div>
                   </div>
                 )}
-              </div>
-
-              <div className="sticky bottom-0 bg-gray-50 border-t p-4 flex justify-end gap-3">
-                <Button onClick={() => setShowSummaryModal(false)} variant="outline">
-                  Close
-                </Button>
-                <Button onClick={downloadPDF} className="bg-blue-600 hover:bg-blue-700">
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  Download PDF
-                </Button>
-              </div>
             </div>
+          )}
+
+          <div className="bg-gray-50 border-t p-4 flex justify-end gap-3">
+            <Button onClick={() => setShowSummaryModal(false)} variant="outline">
+              Close
+            </Button>
+            <Button onClick={downloadPDF} className="bg-blue-600 hover:bg-blue-700">
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Download PDF
+            </Button>
           </div>
-        )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
