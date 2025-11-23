@@ -64,7 +64,6 @@ export default function Dashboard() {
     { name: 'Blood Pressure', count: 412 },
     { name: 'Heart Rate', count: 389 },
     { name: 'SpO2', count: 356 },
-    { name: 'Glucose', count: 298 },
     { name: 'EKG', count: 245 },
   ];
 

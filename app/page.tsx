@@ -41,27 +41,6 @@ export default function Home() {
           />
         </div>
 
-        {/* CTA Buttons */}
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Link
-            href="/dashboard"
-            className="px-8 py-3 bg-primary text-white rounded-lg font-semibold hover:bg-primary-dark transition-colors"
-          >
-            Go to Dashboard
-          </Link>
-          <Link
-            href="/device-simulator"
-            className="px-8 py-3 bg-secondary text-white rounded-lg font-semibold hover:bg-secondary/90 transition-colors"
-          >
-            Device Simulator
-          </Link>
-          <Link
-            href="/auth/login"
-            className="px-8 py-3 border-2 border-primary text-primary rounded-lg font-semibold hover:bg-primary hover:text-white transition-colors"
-          >
-            Login
-          </Link>
-        </div>
       </div>
 
       {/* Stats Section */}

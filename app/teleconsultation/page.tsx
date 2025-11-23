@@ -26,6 +26,22 @@ export default function TelemedicinePage() {
   
   // Patient state
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  
+  // User role state
+  const [userRole, setUserRole] = useState('');
+  
+  useEffect(() => {
+    // Get user role from localStorage
+    const user = localStorage.getItem('user');
+    if (user) {
+      try {
+        const userData = JSON.parse(user);
+        setUserRole(userData.role);
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     // Check if script is already loaded
@@ -81,6 +97,12 @@ export default function TelemedicinePage() {
   }, []);
 
   const startCall = () => {
+    // Only nakes can initiate calls
+    if (userRole !== 'nakes') {
+      alert('Only healthcare workers (Nakes) can initiate calls. Doctors can only join incoming calls.');
+      return;
+    }
+
     if (!selectedPatient) {
       alert('Please select a patient before starting a consultation.');
       return;
@@ -247,16 +269,18 @@ export default function TelemedicinePage() {
           )}
         </div>
 
-        {/* Patient Selection */}
-        <div className="mb-8">
-          <PatientSelector
-            selectedPatient={selectedPatient}
-            onSelectPatient={setSelectedPatient}
-            title="Patient Selection"
-            description="Select a patient for the telemedicine consultation"
-            emptyStateMessage="Please select a patient before starting a consultation"
-          />
-        </div>
+        {/* Patient Selection - Only for Nakes */}
+        {userRole === 'nakes' && (
+          <div className="mb-8">
+            <PatientSelector
+              selectedPatient={selectedPatient}
+              onSelectPatient={setSelectedPatient}
+              title="Patient Selection"
+              description="Select a patient for the telemedicine consultation"
+              emptyStateMessage="Please select a patient before starting a consultation"
+            />
+          </div>
+        )}
 
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Video Call Area */}
@@ -275,26 +299,41 @@ export default function TelemedicinePage() {
                 {!isCallActive ? (
                   <div className="h-full flex flex-col items-center justify-center bg-muted rounded-lg">
                     <Video className="w-24 h-24 mb-6 text-muted-foreground opacity-20" />
-                    <h3 className="text-xl font-semibold mb-2">Ready to Start Consultation</h3>
-                    <p className="text-muted-foreground mb-6 text-center max-w-md">
-                      {selectedPatient 
-                        ? 'Click the button below to start a secure video consultation with your patient'
-                        : 'Please select a patient first to start a consultation'}
-                    </p>
-                    <Button 
-                      onClick={startCall} 
-                      size="lg" 
-                      className="gap-2" 
-                      disabled={!selectedPatient || !isJitsiLoaded}
-                    >
-                      <Phone className="w-5 h-5" />
-                      {isJitsiLoaded ? 'Start Video Call' : 'Loading...'}
-                    </Button>
-                    {!selectedPatient && (
-                      <p className="text-sm text-amber-600 mt-4">Patient selection is required</p>
-                    )}
-                    {!isJitsiLoaded && selectedPatient && (
-                      <p className="text-sm text-amber-600 mt-4">Please wait for video system to load</p>
+                    {userRole === 'doctor' ? (
+                      <>
+                        <h3 className="text-xl font-semibold mb-2">Waiting for Incoming Call</h3>
+                        <p className="text-muted-foreground mb-6 text-center max-w-md">
+                          You will be notified when a healthcare worker initiates a consultation
+                        </p>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                          <span>Ready to receive calls</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <h3 className="text-xl font-semibold mb-2">Ready to Start Consultation</h3>
+                        <p className="text-muted-foreground mb-6 text-center max-w-md">
+                          {selectedPatient 
+                            ? 'Click the button below to start a secure video consultation with your patient'
+                            : 'Please select a patient first to start a consultation'}
+                        </p>
+                        <Button 
+                          onClick={startCall} 
+                          size="lg" 
+                          className="gap-2" 
+                          disabled={!selectedPatient || !isJitsiLoaded}
+                        >
+                          <Phone className="w-5 h-5" />
+                          {isJitsiLoaded ? 'Start Video Call' : 'Loading...'}
+                        </Button>
+                        {!selectedPatient && (
+                          <p className="text-sm text-amber-600 mt-4">Patient selection is required</p>
+                        )}
+                        {!isJitsiLoaded && selectedPatient && (
+                          <p className="text-sm text-amber-600 mt-4">Please wait for video system to load</p>
+                        )}
+                      </>
                     )}
                   </div>
                 ) : (
