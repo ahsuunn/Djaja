@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Users, FileText, Download, Search, AlertCircle, Loader2, RefreshCcw, RefreshCcwIcon, Plus } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface Patient {
   _id: string;
@@ -198,39 +199,54 @@ export default function PatientsPage() {
   };
 
   const exportFHIR = (patient: Patient) => {
-    const fhirPatient = {
-      resourceType: 'Patient',
-      id: patient._id,
-      identifier: [
-        {
-          system: 'http://djaja-diagnostics.com/patient-id',
-          value: patient.patientId,
-        },
-      ],
-      name: [
-        {
-          use: 'official',
-          text: patient.name,
-        },
-      ],
-      gender: patient.gender,
-      birthDate: patient.dateOfBirth,
-      telecom: [
-        {
-          system: 'phone',
-          value: patient.phoneNumber,
-        },
-      ],
-    };
+    try {
+      toast.loading('Exporting FHIR data...', { id: 'fhir-export' });
 
-    const dataStr = JSON.stringify(fhirPatient, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
-    const exportFileDefaultName = `patient-${patient.patientId}-fhir.json`;
+      const fhirPatient = {
+        resourceType: 'Patient',
+        id: patient._id,
+        identifier: [
+          {
+            system: 'http://djaja-diagnostics.com/patient-id',
+            value: patient.patientId,
+          },
+        ],
+        name: [
+          {
+            use: 'official',
+            text: patient.name,
+          },
+        ],
+        gender: patient.gender,
+        birthDate: patient.dateOfBirth,
+        telecom: [
+          {
+            system: 'phone',
+            value: patient.phoneNumber,
+          },
+        ],
+      };
 
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
-    linkElement.click();
+      const dataStr = JSON.stringify(fhirPatient, null, 2);
+      const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+      const exportFileDefaultName = `patient-${patient.patientId}-fhir.json`;
+
+      const linkElement = document.createElement('a');
+      linkElement.setAttribute('href', dataUri);
+      linkElement.setAttribute('download', exportFileDefaultName);
+      linkElement.click();
+
+      toast.success('FHIR data exported successfully!', { 
+        id: 'fhir-export',
+        duration: 3000,
+      });
+    } catch (error) {
+      console.error('Error exporting FHIR data:', error);
+      toast.error('Failed to export FHIR data', { 
+        id: 'fhir-export',
+        duration: 4000,
+      });
+    }
   };
 
   return (

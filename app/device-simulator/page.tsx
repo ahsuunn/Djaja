@@ -14,6 +14,8 @@ import PatientSelector, { Patient } from '@/components/PatientSelector';
 import { VitalCard } from '@/components/device-simulator/VitalCard';
 import { IndicatorControlPanel } from '@/components/device-simulator/IndicatorControlPanel';
 import { StreamingIndicator } from '@/components/device-simulator/StreamingIndicator';
+import { generateMinimalistPDF } from '@/lib/pdf-utils';
+import { toast } from 'sonner';
 
 export default function DeviceSimulator() {
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -129,405 +131,54 @@ export default function DeviceSimulator() {
   };
 
   const downloadPDF = () => {
-    if (!result) return;
-    
-    // Create a printable HTML content
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-    
-    const content = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Medical Summary - ${selectedPatient?.name || 'Patient'}</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-            padding: 48px; 
-            line-height: 1.6; 
-            color: #1a1a1a;
-            background: white;
-            font-size: 14px;
-          }
-          .header { 
-            margin-bottom: 48px; 
-            padding-bottom: 24px; 
-            border-bottom: 1px solid #e5e5e5; 
-          }
-          .header h1 { 
-            font-size: 28px; 
-            font-weight: 600; 
-            color: #000; 
-            margin-bottom: 8px;
-            letter-spacing: -0.5px;
-          }
-          .header p { 
-            color: #666; 
-            font-size: 13px; 
-          }
-          .risk-badge { 
-            display: inline-block; 
-            padding: 6px 14px; 
-            border-radius: 6px; 
-            font-weight: 500; 
-            font-size: 12px;
-            letter-spacing: 0.5px;
-          }
-          .critical { background: #fee; color: #dc2626; border: 1px solid #fcc; }
-          .high { background: #fff4ed; color: #ea580c; border: 1px solid #fed7aa; }
-          .moderate { background: #fefce8; color: #ca8a04; border: 1px solid #fef08a; }
-          .low { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
-          .section { 
-            margin: 36px 0; 
-            page-break-inside: avoid; 
-          }
-          .section-title { 
-            font-size: 16px; 
-            font-weight: 600; 
-            color: #000; 
-            margin-bottom: 16px; 
-            letter-spacing: -0.3px;
-          }
-          .info-grid { 
-            display: grid; 
-            grid-template-columns: 1fr 1fr; 
-            gap: 12px; 
-            margin: 16px 0; 
-          }
-          .info-item { 
-            padding: 12px 16px; 
-            background: #fafafa; 
-            border-radius: 6px;
-            border: 1px solid #f0f0f0;
-          }
-          .info-item strong { 
-            color: #666; 
-            font-weight: 500; 
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            display: block;
-            margin-bottom: 4px;
-          }
-          .info-item span { 
-            color: #000; 
-            font-size: 14px; 
-          }
-          .vital { 
-            padding: 14px 16px; 
-            margin: 8px 0; 
-            border-radius: 6px; 
-            border: 1px solid;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-          }
-          .vital-label { font-weight: 500; color: #000; }
-          .vital-value { 
-            font-family: 'SF Mono', Monaco, monospace; 
-            font-size: 13px;
-            color: #666;
-          }
-          .vital-message { 
-            font-size: 12px; 
-            color: #666; 
-            margin-top: 6px;
-            display: block;
-          }
-          .normal { background: #f9fef9; border-color: #d1fad1; }
-          .caution { background: #fefef9; border-color: #fef4c7; }
-          .warning { background: #fffaf5; border-color: #fed7aa; }
-          .critical-vital { background: #fef9f9; border-color: #fecaca; }
-          .indicator { 
-            margin: 12px 0; 
-            padding: 16px; 
-            border-radius: 6px; 
-            background: #fafafa;
-            border: 1px solid #f0f0f0;
-          }
-          .indicator-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-          }
-          .indicator-title { font-weight: 500; color: #000; font-size: 14px; }
-          .likelihood-badge {
-            padding: 4px 10px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-          }
-          .likelihood-critical { background: #fee; color: #dc2626; }
-          .likelihood-high { background: #fff4ed; color: #ea580c; }
-          .likelihood-moderate { background: #fefce8; color: #ca8a04; }
-          .likelihood-low { background: #f0f9ff; color: #0369a1; }
-          .indicator ul { 
-            list-style: none; 
-            margin-top: 8px;
-          }
-          .indicator li { 
-            padding: 4px 0;
-            padding-left: 16px;
-            position: relative;
-            font-size: 13px;
-            color: #666;
-          }
-          .indicator li:before {
-            content: "•";
-            position: absolute;
-            left: 0;
-            color: #999;
-          }
-          .prescription { 
-            margin: 16px 0; 
-            padding: 16px; 
-            border: 1px solid #e5e5e5; 
-            border-radius: 6px; 
-            background: #fafafa;
-          }
-          .prescription h3 { 
-            font-size: 15px; 
-            font-weight: 600; 
-            color: #000; 
-            margin-bottom: 10px; 
-          }
-          .prescription-meta {
-            display: flex;
-            gap: 20px;
-            margin-bottom: 10px;
-            font-size: 12px;
-          }
-          .prescription-meta-item { color: #666; }
-          .prescription-meta-item strong { color: #999; font-weight: 500; }
-          .prescription p { 
-            font-size: 13px; 
-            color: #666; 
-            line-height: 1.5;
-          }
-          .recommendation { 
-            margin: 12px 0; 
-            padding: 14px 16px; 
-            border-radius: 6px; 
-            background: #fafafa;
-            border: 1px solid #e5e5e5;
-          }
-          .rec-header {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            margin-bottom: 8px;
-          }
-          .urgency-badge {
-            padding: 4px 10px;
-            border-radius: 4px;
-            font-size: 10px;
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-          }
-          .urgency-immediate { background: #fee; color: #dc2626; }
-          .urgency-urgent { background: #fff4ed; color: #ea580c; }
-          .urgency-routine { background: #f0f9ff; color: #0369a1; }
-          .rec-type { 
-            font-weight: 500; 
-            font-size: 13px; 
-            color: #000; 
-          }
-          .rec-message { 
-            font-size: 13px; 
-            color: #666; 
-            line-height: 1.6;
-          }
-          .note { 
-            font-size: 12px; 
-            color: #999; 
-            font-style: italic; 
-            margin-top: 16px;
-            padding: 12px;
-            background: #fafafa;
-            border-radius: 6px;
-            border: 1px solid #f0f0f0;
-          }
-          .footer { 
-            margin-top: 64px; 
-            padding-top: 24px; 
-            border-top: 1px solid #e5e5e5; 
-            text-align: center; 
-            color: #999;
-            font-size: 12px;
-          }
-          .footer p { margin: 4px 0; }
-          @media print { 
-            body { padding: 32px; } 
-            .section { page-break-inside: avoid; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>Medical Diagnostic Summary</h1>
-          <p>${new Date(result.processedAt).toLocaleString('en-US', { 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric', 
-            hour: '2-digit', 
-            minute: '2-digit' 
-          })}</p>
-        </div>
-        
-        <div class="section">
-          <div class="section-title">Patient Information</div>
-          <div class="info-grid">
-            <div class="info-item">
-              <strong>Name</strong>
-              <span>${selectedPatient?.name || 'Demo Patient'}</span>
-            </div>
-            <div class="info-item">
-              <strong>Patient ID</strong>
-              <span>${selectedPatient?.patientId || 'demo-patient'}</span>
-            </div>
-            <div class="info-item">
-              <strong>Gender</strong>
-              <span>${selectedPatient?.gender || 'N/A'}</span>
-            </div>
-            <div class="info-item">
-              <strong>Blood Type</strong>
-              <span>${selectedPatient?.bloodType || 'N/A'}</span>
-            </div>
-          </div>
-        </div>
-        
-        <div class="section">
-          <div class="section-title">Overall Assessment</div>
-          <p style="margin-bottom: 12px;">
-            <span class="risk-badge ${result.overallRisk}">${result.overallRisk.toUpperCase()} RISK</span>
-          </p>
-          <p style="color: #666; line-height: 1.7;">${result.summary}</p>
-        </div>
-        
-        <div class="section">
-          <div class="section-title">Vital Signs</div>
-          ${result.analysis.bloodPressure ? `
-            <div class="vital ${result.analysis.bloodPressure.status === 'critical' ? 'critical-vital' : result.analysis.bloodPressure.status}">
-              <div>
-                <span class="vital-label">Blood Pressure</span>
-                <span class="vital-message">${result.analysis.bloodPressure.message}</span>
-              </div>
-              <span class="vital-value">${vitals.bloodPressure.systolic}/${vitals.bloodPressure.diastolic} mmHg</span>
-            </div>
-          ` : ''}
-          ${result.analysis.heartRate ? `
-            <div class="vital ${result.analysis.heartRate.status === 'critical' ? 'critical-vital' : result.analysis.heartRate.status}">
-              <div>
-                <span class="vital-label">Heart Rate</span>
-                <span class="vital-message">${result.analysis.heartRate.message}</span>
-              </div>
-              <span class="vital-value">${vitals.heartRate} bpm</span>
-            </div>
-          ` : ''}
-          ${result.analysis.spO2 ? `
-            <div class="vital ${result.analysis.spO2.status === 'critical' ? 'critical-vital' : result.analysis.spO2.status}">
-              <div>
-                <span class="vital-label">Oxygen Saturation</span>
-                <span class="vital-message">${result.analysis.spO2.message}</span>
-              </div>
-              <span class="vital-value">${vitals.spO2}%</span>
-            </div>
-          ` : ''}
-          ${result.analysis.temperature ? `
-            <div class="vital ${result.analysis.temperature.status === 'critical' ? 'critical-vital' : result.analysis.temperature.status}">
-              <div>
-                <span class="vital-label">Temperature</span>
-                <span class="vital-message">${result.analysis.temperature.message}</span>
-              </div>
-              <span class="vital-value">${vitals.temperature}°C</span>
-            </div>
-          ` : ''}
-          ${result.analysis.ekg ? `
-            <div class="vital ${result.analysis.ekg.status === 'critical' ? 'critical-vital' : result.analysis.ekg.status}">
-              <div>
-                <span class="vital-label">EKG Rhythm</span>
-                <span class="vital-message">${result.analysis.ekg.message}</span>
-              </div>
-              <span class="vital-value" style="text-transform: capitalize;">${vitals.ekg.rhythm}</span>
-            </div>
-          ` : ''}
-        </div>
-        
-        ${result.diseaseIndicators && result.diseaseIndicators.length > 0 ? `
-          <div class="section">
-            <div class="section-title">Disease Indicators</div>
-            ${result.diseaseIndicators.map(indicator => `
-              <div class="indicator">
-                <div class="indicator-header">
-                  <span class="indicator-title">${indicator.condition}</span>
-                  <span class="likelihood-badge likelihood-${indicator.likelihood}">${indicator.likelihood}</span>
-                </div>
-                <ul>
-                  ${indicator.indicators.map(ind => `<li>${ind}</li>`).join('')}
-                </ul>
-              </div>
-            `).join('')}
-          </div>
-        ` : ''}
-        
-        ${result.prescriptions && result.prescriptions.length > 0 ? `
-          <div class="section">
-            <div class="section-title">Recommended Medications</div>
-            ${result.prescriptions.map(med => `
-              <div class="prescription">
-                <h3>${med.name}</h3>
-                <div class="prescription-meta">
-                  <div class="prescription-meta-item"><strong>Dosage</strong> ${med.dosage}</div>
-                  <div class="prescription-meta-item"><strong>Frequency</strong> ${med.frequency}</div>
-                  <div class="prescription-meta-item"><strong>Duration</strong> ${med.duration}</div>
-                </div>
-                <p>${med.instructions}</p>
-              </div>
-            `).join('')}
-            <div class="note">
-              Note: These are automated recommendations. Consult with a licensed physician before taking any medication.
-            </div>
-          </div>
-        ` : ''}
-        
-        ${result.recommendations && result.recommendations.length > 0 ? `
-          <div class="section">
-            <div class="section-title">Medical Recommendations</div>
-            ${result.recommendations.map(rec => `
-              <div class="recommendation">
-                <div class="rec-header">
-                  <span class="urgency-badge urgency-${rec.urgency}">${rec.urgency}</span>
-                  <span class="rec-type">${
-                    rec.type === 'teleconsultation' ? 'Teleconsultation' :
-                    rec.type === 'hospital_referral' ? 'Hospital Referral' :
-                    rec.type === 'follow_up' ? 'Follow-up' : 'Lifestyle'
-                  }</span>
-                </div>
-                <p class="rec-message">${rec.message}</p>
-              </div>
-            `).join('')}
-          </div>
-        ` : ''}
-        
-        <div class="footer">
-          <p>Djaja Diagnostics IoT System</p>
-          <p>Report ID: SIM-${Date.now()}</p>
-        </div>
-      </body>
-      </html>
-    `;
-    
-    printWindow.document.write(content);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-    }, 250);
+    if (!result) {
+      toast.error('No diagnostic results available', {
+        duration: 3000,
+      });
+      return;
+    }
+
+    try {
+      toast.loading('Generating PDF...', { id: 'pdf-generation' });
+
+      // Generate and download PDF with complete data matching the modal
+      generateMinimalistPDF({
+        patient: {
+          name: selectedPatient?.name || 'Demo Patient',
+          id: selectedPatient?.patientId || 'demo-patient',
+          gender: selectedPatient?.gender,
+          bloodType: selectedPatient?.bloodType,
+        },
+        vitals,
+        vitalAnalysis: {
+          bloodPressure: result.analysis.bloodPressure,
+          heartRate: result.analysis.heartRate,
+          spO2: result.analysis.spO2,
+          temperature: result.analysis.temperature,
+          ekg: result.analysis.ekg,
+        },
+        overallAssessment: {
+          risk: result.overallRisk,
+          summary: result.summary,
+        },
+        diseaseIndicators: result.diseaseIndicators,
+        prescriptions: result.prescriptions,
+        recommendations: result.recommendations,
+        timestamp: new Date(result.processedAt),
+        facilityName: 'Djaja Diagnostics IoT System',
+      });
+
+      toast.success('PDF downloaded successfully!', { 
+        id: 'pdf-generation',
+        duration: 3000,
+      });
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      toast.error('Failed to generate PDF', { 
+        id: 'pdf-generation',
+        duration: 4000,
+      });
+    }
   };
 
   const sendToCloud = (vitalData?: VitalSigns) => {
@@ -1312,145 +963,184 @@ export default function DeviceSimulator() {
       {/* Comprehensive Summary Modal - Shows only after comprehensive analysis completes */}
       <Dialog open={showSummaryModal} onOpenChange={setShowSummaryModal}>
         <DialogContent className="max-w-4xl max-h-[90vh] p-0 gap-0">
-          <DialogHeader className="px-6 pt-6 pb-4 border-b">
-            <div className="flex items-center justify-between">
-              <div>
-                <DialogTitle className="text-2xl font-bold text-primary">Comprehensive Medical Summary</DialogTitle>
-                <DialogDescription>
-                  {result && `Generated: ${new Date(result.processedAt).toLocaleString()}`}
-                </DialogDescription>
-              </div>
-              <Button onClick={downloadPDF} variant="outline" size="sm">
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Download PDF
-              </Button>
+          <DialogHeader className="px-6 pt-6 pb-4 border-b bg-white">
+            <div className="text-center">
+              <DialogTitle className="text-2xl font-bold text-gray-900">Patient Diagnostic Report</DialogTitle>
+              <DialogDescription className="text-sm text-gray-500 mt-1">
+                Djaja Diagnostics IoT System
+              </DialogDescription>
+              {result && (
+                <p className="text-xs text-gray-400 mt-1">
+                  Generated: {new Date(result.processedAt).toLocaleString()}
+                </p>
+              )}
             </div>
           </DialogHeader>
 
           {result && (
-            <div className="p-6 space-y-6 overflow-y-auto dialog-scroll" style={{ maxHeight: 'calc(90vh - 180px)' }}>
+            <div className="p-8 space-y-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 180px)' }}>
                 {/* Patient Information */}
-                <div className="bg-gray-50 rounded-lg p-4 border">
-                  <h3 className="font-semibold text-lg mb-3 text-gray-900">Patient Information</h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-white p-3 rounded border-l-4 border-blue-500">
-                      <p className="text-xs text-gray-600">Name</p>
-                      <p className="font-medium">{selectedPatient?.name || 'Demo Patient'}</p>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-3 pb-2 border-b">Patient Information</h3>
+                  <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
+                    <div className="flex">
+                      <span className="text-gray-500 w-24">Name:</span>
+                      <span className="font-medium text-gray-900">{selectedPatient?.name || 'Demo Patient'}</span>
                     </div>
-                    <div className="bg-white p-3 rounded border-l-4 border-blue-500">
-                      <p className="text-xs text-gray-600">Patient ID</p>
-                      <p className="font-medium">{selectedPatient?.patientId || 'demo-patient'}</p>
+                    <div className="flex">
+                      <span className="text-gray-500 w-24">Patient ID:</span>
+                      <span className="font-medium text-gray-900">{selectedPatient?.patientId || 'demo-patient'}</span>
                     </div>
-                    <div className="bg-white p-3 rounded border-l-4 border-blue-500">
-                      <p className="text-xs text-gray-600">Gender</p>
-                      <p className="font-medium">{selectedPatient?.gender || 'N/A'}</p>
+                    <div className="flex">
+                      <span className="text-gray-500 w-24">Gender:</span>
+                      <span className="font-medium text-gray-900">{selectedPatient?.gender || 'N/A'}</span>
                     </div>
-                    <div className="bg-white p-3 rounded border-l-4 border-blue-500">
-                      <p className="text-xs text-gray-600">Blood Type</p>
-                      <p className="font-medium">{selectedPatient?.bloodType || 'N/A'}</p>
+                    <div className="flex">
+                      <span className="text-gray-500 w-24">Blood Type:</span>
+                      <span className="font-medium text-gray-900">{selectedPatient?.bloodType || 'N/A'}</span>
                     </div>
+                  </div>
+                </div>
+
+                {/* Vital Signs */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-3 pb-2 border-b">Vital Signs</h3>
+                  <div className="space-y-2">
+                    {result.analysis.bloodPressure && (
+                      <div className="flex justify-between items-start text-sm py-2 border-b border-gray-100">
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-900">Blood Pressure</div>
+                          <div className="text-xs text-gray-500 mt-0.5">{result.analysis.bloodPressure.message}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-mono font-medium text-gray-900">{vitals.bloodPressure.systolic}/{vitals.bloodPressure.diastolic} mmHg</div>
+                          <div className={`text-xs mt-0.5 ${
+                            result.analysis.bloodPressure.status === 'critical' ? 'text-red-600' :
+                            result.analysis.bloodPressure.status === 'warning' ? 'text-orange-600' :
+                            'text-green-600'
+                          }`}>
+                            {result.analysis.bloodPressure.status === 'critical' ? 'Abnormal' :
+                             result.analysis.bloodPressure.status === 'warning' ? 'Warning' : 'Normal'}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {result.analysis.heartRate && (
+                      <div className="flex justify-between items-start text-sm py-2 border-b border-gray-100">
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-900">Heart Rate</div>
+                          <div className="text-xs text-gray-500 mt-0.5">{result.analysis.heartRate.message}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-mono font-medium text-gray-900">{vitals.heartRate} bpm</div>
+                          <div className={`text-xs mt-0.5 ${
+                            result.analysis.heartRate.status === 'critical' ? 'text-red-600' :
+                            result.analysis.heartRate.status === 'warning' ? 'text-orange-600' :
+                            'text-green-600'
+                          }`}>
+                            {result.analysis.heartRate.status === 'critical' ? 'Abnormal' :
+                             result.analysis.heartRate.status === 'warning' ? 'Warning' : 'Normal'}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {result.analysis.spO2 && (
+                      <div className="flex justify-between items-start text-sm py-2 border-b border-gray-100">
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-900">Oxygen Saturation (SpO2)</div>
+                          <div className="text-xs text-gray-500 mt-0.5">{result.analysis.spO2.message}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-mono font-medium text-gray-900">{vitals.spO2}%</div>
+                          <div className={`text-xs mt-0.5 ${
+                            result.analysis.spO2.status === 'critical' ? 'text-red-600' :
+                            result.analysis.spO2.status === 'warning' ? 'text-orange-600' :
+                            'text-green-600'
+                          }`}>
+                            {result.analysis.spO2.status === 'critical' ? 'Abnormal' :
+                             result.analysis.spO2.status === 'warning' ? 'Warning' : 'Normal'}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {result.analysis.temperature && (
+                      <div className="flex justify-between items-start text-sm py-2 border-b border-gray-100">
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-900">Temperature</div>
+                          <div className="text-xs text-gray-500 mt-0.5">{result.analysis.temperature.message}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-mono font-medium text-gray-900">{vitals.temperature}°C</div>
+                          <div className={`text-xs mt-0.5 ${
+                            result.analysis.temperature.status === 'critical' ? 'text-red-600' :
+                            result.analysis.temperature.status === 'warning' ? 'text-orange-600' :
+                            'text-green-600'
+                          }`}>
+                            {result.analysis.temperature.status === 'critical' ? 'Abnormal' :
+                             result.analysis.temperature.status === 'warning' ? 'Warning' : 'Normal'}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {result.analysis.ekg && (
+                      <div className="flex justify-between items-start text-sm py-2">
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-900">EKG Rhythm</div>
+                          <div className="text-xs text-gray-500 mt-0.5">{result.analysis.ekg.message}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-mono font-medium text-gray-900 capitalize">{vitals.ekg.rhythm}</div>
+                          <div className={`text-xs mt-0.5 ${
+                            result.analysis.ekg.status === 'critical' ? 'text-red-600' :
+                            result.analysis.ekg.status === 'warning' ? 'text-orange-600' :
+                            'text-green-600'
+                          }`}>
+                            {result.analysis.ekg.status === 'critical' ? 'Abnormal' :
+                             result.analysis.ekg.status === 'warning' ? 'Warning' : 'Normal'}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 {/* Overall Assessment */}
-                <div className={`rounded-lg p-5 border-2 ${
-                  result.overallRisk === 'critical' ? 'bg-red-50 border-red-500' :
-                  result.overallRisk === 'high' ? 'bg-orange-50 border-orange-500' :
-                  result.overallRisk === 'moderate' ? 'bg-yellow-50 border-yellow-500' :
-                  'bg-green-50 border-green-500'
-                }`}>
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-lg text-gray-900">Overall Assessment</h3>
-                    <span className={`px-4 py-2 rounded-full text-sm font-bold ${
-                      result.overallRisk === 'critical' ? 'bg-red-600 text-white' :
-                      result.overallRisk === 'high' ? 'bg-orange-600 text-white' :
-                      result.overallRisk === 'moderate' ? 'bg-yellow-600 text-white' :
-                      'bg-green-600 text-white'
-                    }`}>
-                      {result.overallRisk.toUpperCase()} RISK
-                    </span>
-                  </div>
-                  <p className="text-sm leading-relaxed">{result.summary}</p>
-                </div>
-
-                {/* Vital Signs */}
-                <div className="bg-white rounded-lg border p-4">
-                  <h3 className="font-semibold text-lg mb-3 text-gray-900">📊 Vital Signs Readings</h3>
-                  <div className="space-y-2">
-                    {result.analysis.bloodPressure && (
-                      <div className={`p-3 rounded-lg text-sm ${getStatusColor(result.analysis.bloodPressure.status)}`}>
-                        <div className="flex justify-between items-center">
-                          <span className="font-semibold">Blood Pressure</span>
-                          <span className="font-mono">{vitals.bloodPressure.systolic}/{vitals.bloodPressure.diastolic} mmHg</span>
-                        </div>
-                        <p className="text-xs mt-1 opacity-90">{result.analysis.bloodPressure.message}</p>
-                      </div>
-                    )}
-                    {result.analysis.heartRate && (
-                      <div className={`p-3 rounded-lg text-sm ${getStatusColor(result.analysis.heartRate.status)}`}>
-                        <div className="flex justify-between items-center">
-                          <span className="font-semibold">Heart Rate</span>
-                          <span className="font-mono">{vitals.heartRate} bpm</span>
-                        </div>
-                        <p className="text-xs mt-1 opacity-90">{result.analysis.heartRate.message}</p>
-                      </div>
-                    )}
-                    {result.analysis.spO2 && (
-                      <div className={`p-3 rounded-lg text-sm ${getStatusColor(result.analysis.spO2.status)}`}>
-                        <div className="flex justify-between items-center">
-                          <span className="font-semibold">Oxygen Saturation</span>
-                          <span className="font-mono">{vitals.spO2}%</span>
-                        </div>
-                        <p className="text-xs mt-1 opacity-90">{result.analysis.spO2.message}</p>
-                      </div>
-                    )}
-                    {result.analysis.temperature && (
-                      <div className={`p-3 rounded-lg text-sm ${getStatusColor(result.analysis.temperature.status)}`}>
-                        <div className="flex justify-between items-center">
-                          <span className="font-semibold">Temperature</span>
-                          <span className="font-mono">{vitals.temperature}°C</span>
-                        </div>
-                        <p className="text-xs mt-1 opacity-90">{result.analysis.temperature.message}</p>
-                      </div>
-                    )}
-                    {result.analysis.ekg && (
-                      <div className={`p-3 rounded-lg text-sm ${getStatusColor(result.analysis.ekg.status)}`}>
-                        <div className="flex justify-between items-center">
-                          <span className="font-semibold">EKG Rhythm</span>
-                          <span className="font-mono capitalize">{vitals.ekg.rhythm}</span>
-                        </div>
-                        <p className="text-xs mt-1 opacity-90">{result.analysis.ekg.message}</p>
-                      </div>
-                    )}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-3 pb-2 border-b">Overall Assessment</h3>
+                  <div className="text-sm">
+                    <div className="mb-2">
+                      <span className={`inline-block px-3 py-1 rounded text-xs font-semibold ${
+                        result.overallRisk === 'critical' ? 'bg-red-100 text-red-800' :
+                        result.overallRisk === 'high' ? 'bg-orange-100 text-orange-800' :
+                        result.overallRisk === 'moderate' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-green-100 text-green-800'
+                      }`}>
+                        {result.overallRisk.toUpperCase()} RISK
+                      </span>
+                    </div>
+                    <p className="text-gray-700 leading-relaxed">{result.summary}</p>
                   </div>
                 </div>
 
                 {/* Disease Indicators */}
                 {result.diseaseIndicators && result.diseaseIndicators.length > 0 && (
-                  <div className="bg-white rounded-lg border p-4">
-                    <h3 className="font-semibold text-lg mb-3 text-gray-900">🔍 Disease Indicators</h3>
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3 pb-2 border-b">Disease Indicators</h3>
                     <div className="space-y-3">
                       {result.diseaseIndicators.map((indicator, idx) => (
-                        <div key={idx} className={`p-4 border-l-4 rounded ${
-                          indicator.likelihood === 'critical' ? 'border-red-600 bg-red-50' :
-                          indicator.likelihood === 'high' ? 'border-orange-600 bg-orange-50' :
-                          indicator.likelihood === 'moderate' ? 'border-yellow-600 bg-yellow-50' :
-                          'border-blue-600 bg-blue-50'
-                        }`}>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="font-semibold text-sm">{indicator.condition}</span>
-                            <span className={`text-xs px-2 py-1 rounded font-medium ${
-                              indicator.likelihood === 'critical' ? 'bg-red-600 text-white' :
-                              indicator.likelihood === 'high' ? 'bg-orange-600 text-white' :
-                              indicator.likelihood === 'moderate' ? 'bg-yellow-600 text-white' :
-                              'bg-blue-600 text-white'
+                        <div key={idx} className="text-sm">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-medium text-gray-900">{indicator.condition}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+                              indicator.likelihood === 'critical' ? 'bg-red-100 text-red-800' :
+                              indicator.likelihood === 'high' ? 'bg-orange-100 text-orange-800' :
+                              indicator.likelihood === 'moderate' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-blue-100 text-blue-800'
                             }`}>
-                              {indicator.likelihood}
+                              {indicator.likelihood.toUpperCase()}
                             </span>
                           </div>
-                          <ul className="text-xs space-y-1">
+                          <ul className="text-xs text-gray-600 space-y-0.5 ml-4">
                             {indicator.indicators.map((ind, i) => (
                               <li key={i}>• {ind}</li>
                             ))}
@@ -1463,52 +1153,47 @@ export default function DeviceSimulator() {
 
                 {/* Prescriptions */}
                 {result.prescriptions && result.prescriptions.length > 0 && (
-                  <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
-                    <h3 className="font-semibold text-lg mb-3 text-gray-900">💊 Recommended Medications</h3>
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3 pb-2 border-b">Recommended Medications</h3>
                     <div className="space-y-3">
                       {result.prescriptions.map((med, idx) => (
-                        <div key={idx} className="p-4 bg-white border rounded-lg">
-                          <h4 className="font-semibold text-blue-900 mb-2">{med.name}</h4>
-                          <div className="grid grid-cols-3 gap-2 mb-2 text-xs">
-                            <div><span className="text-gray-600">Dosage:</span> <span className="font-medium">{med.dosage}</span></div>
-                            <div><span className="text-gray-600">Frequency:</span> <span className="font-medium">{med.frequency}</span></div>
-                            <div><span className="text-gray-600">Duration:</span> <span className="font-medium">{med.duration}</span></div>
+                        <div key={idx} className="text-sm border-l-2 border-blue-400 pl-3">
+                          <h4 className="font-semibold text-gray-900 mb-1">{med.name}</h4>
+                          <div className="grid grid-cols-3 gap-4 mb-1 text-xs text-gray-600">
+                            <div><span className="font-medium">Dosage:</span> {med.dosage}</div>
+                            <div><span className="font-medium">Frequency:</span> {med.frequency}</div>
+                            <div><span className="font-medium">Duration:</span> {med.duration}</div>
                           </div>
-                          <p className="text-xs text-gray-700"><span className="font-medium">Instructions:</span> {med.instructions}</p>
+                          <p className="text-xs text-gray-600">{med.instructions}</p>
                         </div>
                       ))}
-                      <p className="text-xs text-gray-600 italic">⚠️ Note: These are automated recommendations. Consult with a licensed physician before taking any medication.</p>
+                      <p className="text-xs text-gray-500 italic mt-2">⚠️ Note: Consult with a licensed physician before taking any medication.</p>
                     </div>
                   </div>
                 )}
 
                 {/* Recommendations */}
                 {result.recommendations && result.recommendations.length > 0 && (
-                  <div className="bg-purple-50 rounded-lg border border-purple-200 p-4">
-                    <h3 className="font-semibold text-lg mb-3 text-gray-900">📋 Medical Recommendations</h3>
-                    <div className="space-y-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3 pb-2 border-b">Medical Recommendations</h3>
+                    <div className="space-y-2">
                       {result.recommendations.map((rec, idx) => (
-                        <div key={idx} className={`p-4 border-l-4 rounded bg-white ${
-                          rec.urgency === 'immediate' ? 'border-red-600' :
-                          rec.urgency === 'urgent' ? 'border-orange-600' :
-                          'border-blue-600'
-                        }`}>
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className={`text-xs px-2 py-1 rounded font-medium ${
-                              rec.urgency === 'immediate' ? 'bg-red-600 text-white' :
-                              rec.urgency === 'urgent' ? 'bg-orange-600 text-white' :
-                              'bg-blue-600 text-white'
+                        <div key={idx} className="text-sm border-l-2 border-gray-300 pl-3">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+                              rec.urgency === 'immediate' ? 'bg-red-100 text-red-800' :
+                              rec.urgency === 'urgent' ? 'bg-orange-100 text-orange-800' :
+                              'bg-blue-100 text-blue-800'
                             }`}>
                               {rec.urgency.toUpperCase()}
                             </span>
-                            <span className="text-xs font-medium text-gray-600">
-                              {rec.type === 'teleconsultation' ? '📞 Teleconsultation' :
-                               rec.type === 'hospital_referral' ? '🏥 Hospital Referral' :
-                               rec.type === 'follow_up' ? '📅 Follow-up' :
-                               '💡 Lifestyle'}
+                            <span className="text-xs text-gray-600">
+                              {rec.type === 'teleconsultation' ? 'Teleconsultation' :
+                               rec.type === 'hospital_referral' ? 'Hospital Referral' :
+                               rec.type === 'follow_up' ? 'Follow-up' : 'Lifestyle'}
                             </span>
                           </div>
-                          <p className="text-sm">{rec.message}</p>
+                          <p className="text-gray-700">{rec.message}</p>
                         </div>
                       ))}
                     </div>
