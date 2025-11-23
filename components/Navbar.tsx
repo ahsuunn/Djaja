@@ -105,19 +105,19 @@ export default function Navbar() {
               <>
                 {userRole !== 'doctor' && (
                   <Link href="/device-simulator">
-                    <Button variant="ghost" className={pathname === '/device-simulator' ? 'bg-primary/10 text-primary' : ''}>Device Simulator</Button>
+                    <Button variant="ghost" className={pathname === '/device-simulator/' ? 'bg-primary/10 text-primary' : ''}>Device Simulator</Button>
                   </Link>
                 )}
                 {userRole !== 'nakes' && (
                   <Link href="/dashboard">
-                    <Button variant="ghost" className={pathname === '/dashboard' ? 'bg-primary/10 text-primary' : ''}>Dashboard</Button>
+                    <Button variant="ghost" className={pathname === '/dashboard/' ? 'bg-primary/10 text-primary' : ''}>Dashboard</Button>
                   </Link>
                 )}
                 <Link href="/patients">
-                  <Button variant="ghost" className={pathname === '/patients' ? 'bg-primary/10 text-primary' : ''}>Medical Records</Button>
+                  <Button variant="ghost" className={pathname === '/patients/' ? 'bg-primary/10 text-primary' : ''}>Medical Records</Button>
                 </Link>
                 <Link href="/teleconsultation">
-                  <Button variant="ghost" className={pathname === '/teleconsultation' ? 'bg-primary/10 text-primary' : ''}>Teleconsultation</Button>
+                  <Button variant="ghost" className={pathname === '/teleconsultation/' ? 'bg-primary/10 text-primary' : ''}>Teleconsultation</Button>
                 </Link>
               </>
             )}
@@ -179,25 +179,25 @@ export default function Navbar() {
               <>
                 {userRole !== 'doctor' && (
                   <Link href="/device-simulator" onClick={() => setIsOpen(false)}>
-                    <Button variant="ghost" className={`w-full justify-start ${pathname === '/device-simulator' ? 'bg-primary/10 text-primary' : ''}`}>
+                    <Button variant="ghost" className={`w-full justify-start ${pathname === '/device-simulator/' ? 'bg-primary/10 text-primary' : ''}`}>
                       Device Simulator
                     </Button>
                   </Link>
                 )}
                 {userRole !== 'nakes' && (
                   <Link href="/dashboard" onClick={() => setIsOpen(false)}>
-                    <Button variant="ghost" className={`w-full justify-start ${pathname === '/dashboard' ? 'bg-primary/10 text-primary' : ''}`}>
+                    <Button variant="ghost" className={`w-full justify-start ${pathname === '/dashboard/' ? 'bg-primary/10 text-primary' : ''}`}>
                       Dashboard
                     </Button>
                   </Link>
                 )}
                 <Link href="/patients" onClick={() => setIsOpen(false)}>
-                  <Button variant="ghost" className={`w-full justify-start ${pathname === '/patients' ? 'bg-primary/10 text-primary' : ''}`}>
+                  <Button variant="ghost" className={`w-full justify-start ${pathname === '/patients/' ? 'bg-primary/10 text-primary' : ''}`}>
                     Medical Records
                   </Button>
                 </Link>
                 <Link href="/teleconsultation" onClick={() => setIsOpen(false)}>
-                  <Button variant="ghost" className={`w-full justify-start ${pathname === '/teleconsultation' ? 'bg-primary/10 text-primary' : ''}`}>
+                  <Button variant="ghost" className={`w-full justify-start ${pathname === '/teleconsultation/' ? 'bg-primary/10 text-primary' : ''}`}>
                     Teleconsultation
                   </Button>
                 </Link>
