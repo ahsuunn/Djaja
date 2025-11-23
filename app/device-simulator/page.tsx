@@ -30,6 +30,7 @@ export default function DeviceSimulator() {
     spO2: false,
     temperature: false,
     ekg: false,
+    stethoscope: false,
   });
   const [streamInterval, setStreamInterval] = useState(2000); // ms
   const [vitalHistory, setVitalHistory] = useState<VitalHistory>({
@@ -38,6 +39,7 @@ export default function DeviceSimulator() {
     spO2: [],
     temperature: [],
     ecg: [],
+    stethoscope: [],
   });
   const streamIntervalsRef = useRef<Record<string, NodeJS.Timeout | null>>({
     bloodPressure: null,
@@ -45,6 +47,7 @@ export default function DeviceSimulator() {
     spO2: null,
     temperature: null,
     ekg: null,
+    stethoscope: null,
   });
   const ecgIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isComprehensiveAnalysisRef = useRef(false);
@@ -571,6 +574,15 @@ export default function DeviceSimulator() {
       ecgIntervalRef.current = setInterval(() => {
         generateECGPoint(setVitalHistory);
       }, 16); // ~60 FPS
+    } else if (vitalType === 'stethoscope') {
+      // Stream stethoscope sound waveform
+      streamIntervalsRef.current[vitalType] = setInterval(() => {
+        const soundValue = Math.sin(Date.now() / 100) * 50 + Math.random() * 20;
+        setVitalHistory(prev => ({
+          ...prev,
+          stethoscope: [...prev.stethoscope.slice(-50), { timestamp: Date.now(), value: soundValue }]
+        }));
+      }, 50);
     } else {
       // Stream only the selected vital at specified interval (leave others unchanged)
       streamIntervalsRef.current[vitalType] = setInterval(() => {
@@ -611,6 +623,11 @@ export default function DeviceSimulator() {
         clearInterval(ecgIntervalRef.current);
         ecgIntervalRef.current = null;
       }
+    } else if (vitalType === 'stethoscope') {
+      if (streamIntervalsRef.current[vitalType]) {
+        clearInterval(streamIntervalsRef.current[vitalType]!);
+        streamIntervalsRef.current[vitalType] = null;
+      }
     } else {
       if (streamIntervalsRef.current[vitalType]) {
         clearInterval(streamIntervalsRef.current[vitalType]!);
@@ -635,25 +652,60 @@ export default function DeviceSimulator() {
 
   const anyStreaming = Object.values(isStreaming).some((s) => s);
 
+  const getVitalStatus = (vital: 'bp' | 'hr' | 'spo2' | 'temp') => {
+    if (vital === 'bp') {
+      const sys = vitals.bloodPressure.systolic;
+      if (sys === 0) return 'inactive';
+      if (sys < 90 || sys > 140) return 'danger';
+      if (sys < 100 || sys > 130) return 'warning';
+      return 'safe';
+    }
+    if (vital === 'hr') {
+      const hr = vitals.heartRate;
+      if (hr === 0) return 'inactive';
+      if (hr < 60 || hr > 100) return 'danger';
+      if (hr < 65 || hr > 95) return 'warning';
+      return 'safe';
+    }
+    if (vital === 'spo2') {
+      const spo2 = vitals.spO2;
+      if (spo2 === 0) return 'inactive';
+      if (spo2 < 90) return 'danger';
+      if (spo2 < 95) return 'warning';
+      return 'safe';
+    }
+    if (vital === 'temp') {
+      const temp = vitals.temperature;
+      if (temp === 0) return 'inactive';
+      if (temp < 36 || temp > 38) return 'danger';
+      if (temp < 36.5 || temp > 37.5) return 'warning';
+      return 'safe';
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-8">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+      <div className="max-w-[1800px] mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-primary mb-2">IoT Device Simulator</h1>
-          <p className="text-muted-foreground">
-            Simulate medical device readings and see real-time AI analysis
-          </p>
-          <div className="flex items-center gap-2 mt-4">
-            <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-            <span className="text-sm">
-              {isConnected ? 'Connected to Cloud' : 'Disconnected'}
-            </span>
+        <div className="mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-slate-900 mb-1">IoT Device Simulator</h1>
+              <p className="text-slate-600 text-sm">Real-time medical device monitoring and AI diagnostics</p>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+                <span className="text-sm font-medium text-slate-700">
+                  {isConnected ? 'Cloud Connected' : 'Disconnected'}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Patient Selection */}
-        <div className="mb-8">
+        <div className="mb-6">
           <PatientSelector
             selectedPatient={selectedPatient}
             onSelectPatient={setSelectedPatient}
@@ -663,19 +715,375 @@ export default function DeviceSimulator() {
           />
         </div>
 
-        <div className="space-y-6">
-            {/* Global Controls */}
-            <Card className="border-2 border-primary/20">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Wifi className="w-5 h-5" />
-                  Global Settings
-                </CardTitle>
-                <CardDescription>Configure streaming interval and generate test data</CardDescription>
+        {/* Main Grid Layout: Bento Grid + Control Panel */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6">
+          {/* Left Side: Bento Grid with Indicators */}
+          <div className="space-y-6">
+            {/* Top Row: Large EKG */}
+            <Card className="bg-white border-2 border-slate-200">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Zap className="w-5 h-5 text-purple-600" />
+                    Electrocardiogram (EKG)
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-500 capitalize">{vitals.ekg.rhythm} rhythm</span>
+                    {isStreaming.ekg && <span className="flex h-2 w-2"><span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-purple-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span></span>}
+                  </div>
+                </div>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="pb-4">
+                <div className="h-48 bg-slate-900 rounded-lg">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={vitalHistory.ecg}>
+                      <defs>
+                        <linearGradient id="ecgGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <Area
+                        type="monotone"
+                        dataKey="value"
+                        stroke="#10b981"
+                        strokeWidth={2}
+                        fill="url(#ecgGradient)"
+                        isAnimationActive={false}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Second Row: Stethoscope Sound */}
+            <Card className="bg-white border-2 border-slate-200">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Stethoscope className="w-5 h-5 text-cyan-600" />
+                    Stethoscope Sound
+                  </CardTitle>
+                  {isStreaming.stethoscope && <span className="flex h-2 w-2"><span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-cyan-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span></span>}
+                </div>
+              </CardHeader>
+              <CardContent className="pb-4">
+                <div className="h-32 bg-gradient-to-r from-cyan-50 to-blue-50 rounded-lg">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={vitalHistory.stethoscope}>
+                      <defs>
+                        <linearGradient id="stethGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.6} />
+                          <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <Area
+                        type="monotone"
+                        dataKey="value"
+                        stroke="#06b6d4"
+                        strokeWidth={2}
+                        fill="url(#stethGradient)"
+                        isAnimationActive={false}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Third Row: Vital Signs Grid */}
+            <div className="grid grid-cols-2 gap-6">
+              {/* Blood Pressure */}
+              <Card className="border-2 border-slate-200 bg-white">
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-blue-100 rounded-lg">
+                        <Activity className="w-6 h-6 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-slate-600">Blood Pressure</p>
+                        <p className="text-3xl font-bold text-slate-900">
+                          {vitals.bloodPressure.systolic === 0 ? '--' : vitals.bloodPressure.systolic}
+                          <span className="text-xl">/</span>
+                          {vitals.bloodPressure.diastolic === 0 ? '--' : vitals.bloodPressure.diastolic}
+                        </p>
+                        <p className="text-xs text-slate-500">mmHg</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      {getVitalStatus('bp') === 'safe' && (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-green-100 rounded-full">
+                          <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                          </svg>
+                          <span className="text-xs font-medium text-green-700">Safe</span>
+                        </div>
+                      )}
+                      {getVitalStatus('bp') === 'warning' && (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-yellow-100 rounded-full">
+                          <svg className="w-4 h-4 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                          <span className="text-xs font-medium text-yellow-700">Warning</span>
+                        </div>
+                      )}
+                      {getVitalStatus('bp') === 'danger' && (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-red-100 rounded-full">
+                          <svg className="w-4 h-4 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                          </svg>
+                          <span className="text-xs font-medium text-red-700">Danger</span>
+                        </div>
+                      )}
+                      {isStreaming.bloodPressure && <span className="flex h-2 w-2"><span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-blue-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span></span>}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-600">Safe Range</span>
+                      <span className="font-medium">90-140 / 60-90</span>
+                    </div>
+                    <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                      <div className={`h-full transition-all ${
+                        getVitalStatus('bp') === 'danger' ? 'bg-red-500' :
+                        getVitalStatus('bp') === 'warning' ? 'bg-yellow-500' :
+                        getVitalStatus('bp') === 'safe' ? 'bg-green-500' : 'bg-slate-300'
+                      }`} style={{ width: vitals.bloodPressure.systolic === 0 ? '0%' : `${Math.min((vitals.bloodPressure.systolic / 140) * 100, 100)}%` }}></div>
+                    </div>
+                  </div>
+                  <div className="h-20 mt-4 bg-gradient-to-b from-blue-50 to-blue-200 rounded-lg">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={vitalHistory.bloodPressure}>
+                        <YAxis domain={[60, 180]} ticks={[60, 120, 180]} width={30} tick={{ fontSize: 10, fill: '#64748b' }} />
+                        <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} dot={false} isAnimationActive={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Heart Rate */}
+              <Card className="border-2 border-slate-200 bg-white">
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-red-100 rounded-lg">
+                        <Heart className="w-6 h-6 text-red-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-slate-600">Heart Rate</p>
+                        <p className="text-3xl font-bold text-slate-900">
+                          {vitals.heartRate === 0 ? '--' : vitals.heartRate}
+                        </p>
+                        <p className="text-xs text-slate-500">bpm</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      {getVitalStatus('hr') === 'safe' && (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-green-100 rounded-full">
+                          <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                          </svg>
+                          <span className="text-xs font-medium text-green-700">Safe</span>
+                        </div>
+                      )}
+                      {getVitalStatus('hr') === 'warning' && (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-yellow-100 rounded-full">
+                          <svg className="w-4 h-4 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                          <span className="text-xs font-medium text-yellow-700">Warning</span>
+                        </div>
+                      )}
+                      {getVitalStatus('hr') === 'danger' && (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-red-100 rounded-full">
+                          <svg className="w-4 h-4 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                          </svg>
+                          <span className="text-xs font-medium text-red-700">Danger</span>
+                        </div>
+                      )}
+                      {isStreaming.heartRate && <span className="flex h-2 w-2"><span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span></span>}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-600">Safe Range</span>
+                      <span className="font-medium">60-100 bpm</span>
+                    </div>
+                    <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                      <div className={`h-full transition-all ${
+                        getVitalStatus('hr') === 'danger' ? 'bg-red-500' :
+                        getVitalStatus('hr') === 'warning' ? 'bg-yellow-500' :
+                        getVitalStatus('hr') === 'safe' ? 'bg-green-500' : 'bg-slate-300'
+                      }`} style={{ width: vitals.heartRate === 0 ? '0%' : `${Math.min((vitals.heartRate / 100) * 100, 100)}%` }}></div>
+                    </div>
+                  </div>
+                  <div className="h-20 mt-4 bg-gradient-to-b from-red-50 to-red-200 rounded-lg">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={vitalHistory.heartRate}>
+                        <YAxis domain={[40, 120]} ticks={[40, 80, 120]} width={30} tick={{ fontSize: 10, fill: '#64748b' }} />
+                        <Line type="monotone" dataKey="value" stroke="#ef4444" strokeWidth={2} dot={false} isAnimationActive={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* SpO2 */}
+              <Card className="border-2 border-slate-200 bg-white">
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-green-100 rounded-lg">
+                        <Droplet className="w-6 h-6 text-green-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-slate-600">Oxygen Saturation</p>
+                        <p className="text-3xl font-bold text-slate-900">
+                          {vitals.spO2 === 0 ? '--' : vitals.spO2}
+                        </p>
+                        <p className="text-xs text-slate-500">% SpO₂</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      {getVitalStatus('spo2') === 'safe' && (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-green-100 rounded-full">
+                          <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                          </svg>
+                          <span className="text-xs font-medium text-green-700">Safe</span>
+                        </div>
+                      )}
+                      {getVitalStatus('spo2') === 'warning' && (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-yellow-100 rounded-full">
+                          <svg className="w-4 h-4 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                          <span className="text-xs font-medium text-yellow-700">Warning</span>
+                        </div>
+                      )}
+                      {getVitalStatus('spo2') === 'danger' && (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-red-100 rounded-full">
+                          <svg className="w-4 h-4 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                          </svg>
+                          <span className="text-xs font-medium text-red-700">Danger</span>
+                        </div>
+                      )}
+                      {isStreaming.spO2 && <span className="flex h-2 w-2"><span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span></span>}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-600">Safe Range</span>
+                      <span className="font-medium">95-100%</span>
+                    </div>
+                    <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                      <div className={`h-full transition-all ${
+                        getVitalStatus('spo2') === 'danger' ? 'bg-red-500' :
+                        getVitalStatus('spo2') === 'warning' ? 'bg-yellow-500' :
+                        getVitalStatus('spo2') === 'safe' ? 'bg-green-500' : 'bg-slate-300'
+                      }`} style={{ width: vitals.spO2 === 0 ? '0%' : `${vitals.spO2}%` }}></div>
+                    </div>
+                  </div>
+                  <div className="h-20 mt-4 bg-gradient-to-b from-green-50 to-green-200 rounded-lg">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={vitalHistory.spO2}>
+                        <YAxis domain={[85, 100]} ticks={[85, 92, 100]} width={30} tick={{ fontSize: 10, fill: '#64748b' }} />
+                        <Line type="monotone" dataKey="value" stroke="#10b981" strokeWidth={2} dot={false} isAnimationActive={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Temperature */}
+              <Card className="border-2 border-slate-200 bg-white">
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-orange-100 rounded-lg">
+                        <Thermometer className="w-6 h-6 text-orange-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-slate-600">Temperature</p>
+                        <p className="text-3xl font-bold text-slate-900">
+                          {vitals.temperature === 0 ? '--.-' : vitals.temperature.toFixed(1)}
+                        </p>
+                        <p className="text-xs text-slate-500">°C</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      {getVitalStatus('temp') === 'safe' && (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-green-100 rounded-full">
+                          <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                          </svg>
+                          <span className="text-xs font-medium text-green-700">Safe</span>
+                        </div>
+                      )}
+                      {getVitalStatus('temp') === 'warning' && (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-yellow-100 rounded-full">
+                          <svg className="w-4 h-4 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                          <span className="text-xs font-medium text-yellow-700">Warning</span>
+                        </div>
+                      )}
+                      {getVitalStatus('temp') === 'danger' && (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-red-100 rounded-full">
+                          <svg className="w-4 h-4 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                          </svg>
+                          <span className="text-xs font-medium text-red-700">Danger</span>
+                        </div>
+                      )}
+                      {isStreaming.temperature && <span className="flex h-2 w-2"><span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-orange-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span></span>}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-600">Safe Range</span>
+                      <span className="font-medium">36.5-37.5°C</span>
+                    </div>
+                    <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                      <div className={`h-full transition-all ${
+                        getVitalStatus('temp') === 'danger' ? 'bg-red-500' :
+                        getVitalStatus('temp') === 'warning' ? 'bg-yellow-500' :
+                        getVitalStatus('temp') === 'safe' ? 'bg-green-500' : 'bg-slate-300'
+                      }`} style={{ width: vitals.temperature === 0 ? '0%' : `${Math.min(((vitals.temperature - 35) / 3) * 100, 100)}%` }}></div>
+                    </div>
+                  </div>
+                  <div className="h-20 mt-4 bg-gradient-to-b from-orange-50 to-orange-200 rounded-lg">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={vitalHistory.temperature}>
+                        <YAxis domain={[35, 40]} ticks={[35, 37.5, 40]} width={30} tick={{ fontSize: 10, fill: '#64748b' }} />
+                        <Line type="monotone" dataKey="value" stroke="#f97316" strokeWidth={2} dot={false} isAnimationActive={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+
+          {/* Right Side: Control Panel */}
+          <div className="space-y-6">
+            <Card className="bg-white border-2 border-primary">
+              <CardHeader className="pb-4">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Wifi className="w-5 h-5" />
+                  Control Panel
+                </CardTitle>
+                <CardDescription>Manage device streaming and analysis</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Stream Interval */}
                 <div>
-                  <label className="text-sm font-medium">Stream Interval (ms)</label>
+                  <label className="text-sm font-medium text-slate-700">Stream Interval (ms)</label>
                   <Input
                     type="number"
                     value={streamInterval}
@@ -684,25 +1092,200 @@ export default function DeviceSimulator() {
                     max="10000"
                     step="500"
                     disabled={anyStreaming}
+                    className="mt-1"
                   />
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className="text-xs text-slate-500 mt-1">
                     Data sent every {streamInterval / 1000} seconds
                   </p>
                 </div>
 
-                <div className="flex flex-col gap-2">
-                  <div className="flex gap-2">
-                    <Button onClick={handleGenerateRandomVitals} variant="outline" className="flex-1" disabled={!selectedPatient || anyStreaming || isCollectingVitals}>
-                      Generate Random
-                    </Button>
-                    <Button
-                      onClick={startComprehensiveAnalysis}
-                      disabled={!selectedPatient || !isConnected || isSending || anyStreaming || isCollectingVitals}
-                      className="flex-1"
-                    >
-                      {isCollectingVitals ? `Collecting Data... ${collectedReadings}/${totalReadingsNeeded}` : 'Start Comprehensive Analysis'}
-                    </Button>
+                {/* Generate Random */}
+                <Button 
+                  onClick={handleGenerateRandomVitals} 
+                  variant="outline" 
+                  className="w-full" 
+                  disabled={!selectedPatient || anyStreaming || isCollectingVitals}
+                >
+                  <Zap className="w-4 h-4 mr-2" />
+                  Generate Random
+                </Button>
+
+                {/* Individual Indicator Controls */}
+                <div className="space-y-3 border-t pt-4">
+                  <p className="text-sm font-medium text-slate-700">Individual Indicators</p>
+                  
+                  {/* ECG Control */}
+                  <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg border border-purple-200">
+                    <div className="flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-purple-600" />
+                      <span className="text-sm font-medium text-slate-900">ECG</span>
+                    </div>
+                    {!isStreaming.ekg ? (
+                      <Button
+                        size="sm"
+                        onClick={() => startVitalStreaming('ekg')}
+                        disabled={!selectedPatient || !isConnected}
+                      >
+                        <Play className="w-3 h-3 mr-1" />
+                        Start
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => stopVitalStreaming('ekg')}
+                      >
+                        <Pause className="w-3 h-3 mr-1" />
+                        Stop
+                      </Button>
+                    )}
                   </div>
+
+                  {/* Stethoscope Control */}
+                  <div className="flex items-center justify-between p-3 bg-cyan-50 rounded-lg border border-cyan-200">
+                    <div className="flex items-center gap-2">
+                      <Stethoscope className="w-4 h-4 text-cyan-600" />
+                      <span className="text-sm font-medium text-slate-900">Stethoscope</span>
+                    </div>
+                    {!isStreaming.stethoscope ? (
+                      <Button
+                        size="sm"
+                        onClick={() => startVitalStreaming('stethoscope')}
+                        disabled={!selectedPatient || !isConnected}
+                      >
+                        <Play className="w-3 h-3 mr-1" />
+                        Start
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => stopVitalStreaming('stethoscope')}
+                      >
+                        <Pause className="w-3 h-3 mr-1" />
+                        Stop
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Blood Pressure Control */}
+                  <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <div className="flex items-center gap-2">
+                      <Activity className="w-4 h-4 text-blue-600" />
+                      <span className="text-sm font-medium text-slate-900">Blood Pressure</span>
+                    </div>
+                    {!isStreaming.bloodPressure ? (
+                      <Button
+                        size="sm"
+                        onClick={() => startVitalStreaming('bloodPressure')}
+                        disabled={!selectedPatient || !isConnected}
+                      >
+                        <Play className="w-3 h-3 mr-1" />
+                        Start
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => stopVitalStreaming('bloodPressure')}
+                      >
+                        <Pause className="w-3 h-3 mr-1" />
+                        Stop
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Heart Rate Control */}
+                  <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-200">
+                    <div className="flex items-center gap-2">
+                      <Heart className="w-4 h-4 text-red-600" />
+                      <span className="text-sm font-medium text-slate-900">Heart Rate</span>
+                    </div>
+                    {!isStreaming.heartRate ? (
+                      <Button
+                        size="sm"
+                        onClick={() => startVitalStreaming('heartRate')}
+                        disabled={!selectedPatient || !isConnected}
+                      >
+                        <Play className="w-3 h-3 mr-1" />
+                        Start
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => stopVitalStreaming('heartRate')}
+                      >
+                        <Pause className="w-3 h-3 mr-1" />
+                        Stop
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* SpO2 Control */}
+                  <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
+                    <div className="flex items-center gap-2">
+                      <Droplet className="w-4 h-4 text-green-600" />
+                      <span className="text-sm font-medium text-slate-900">SpO₂</span>
+                    </div>
+                    {!isStreaming.spO2 ? (
+                      <Button
+                        size="sm"
+                        onClick={() => startVitalStreaming('spO2')}
+                        disabled={!selectedPatient || !isConnected}
+                      >
+                        <Play className="w-3 h-3 mr-1" />
+                        Start
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => stopVitalStreaming('spO2')}
+                      >
+                        <Pause className="w-3 h-3 mr-1" />
+                        Stop
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Temperature Control */}
+                  <div className="flex items-center justify-between p-3 bg-orange-50 rounded-lg border border-orange-200">
+                    <div className="flex items-center gap-2">
+                      <Thermometer className="w-4 h-4 text-orange-600" />
+                      <span className="text-sm font-medium text-slate-900">Temperature</span>
+                    </div>
+                    {!isStreaming.temperature ? (
+                      <Button
+                        size="sm"
+                        onClick={() => startVitalStreaming('temperature')}
+                        disabled={!selectedPatient || !isConnected}
+                      >
+                        <Play className="w-3 h-3 mr-1" />
+                        Start
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => stopVitalStreaming('temperature')}
+                      >
+                        <Pause className="w-3 h-3 mr-1" />
+                        Stop
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Comprehensive Analysis */}
+                <div className="border-t pt-4 space-y-3">
+                  <Button
+                    onClick={startComprehensiveAnalysis}
+                    disabled={!selectedPatient || !isConnected || isSending || anyStreaming || isCollectingVitals}
+                    className="w-full"
+                  >
+                    {isCollectingVitals ? `Collecting... ${collectedReadings}/${totalReadingsNeeded}` : 'Start Comprehensive Analysis'}
+                  </Button>
                   {result && (
                     <Button
                       onClick={() => setShowSummaryModal(true)}
@@ -714,14 +1297,16 @@ export default function DeviceSimulator() {
                     </Button>
                   )}
                   {!selectedPatient && (
-                    <p className="text-xs text-red-600 text-center mt-1"> Please select a patient first</p>
+                    <p className="text-xs text-red-600 text-center"> Please select a patient first</p>
                   )}
                 </div>
               </CardContent>
             </Card>
+          </div>
+        </div>
 
-            {/* Individual Vital Streaming Controls */}
-            <div className="space-y-4">
+            {/* Old cards section removed - functionality moved to control panel */}
+            <div className="hidden">
               {/* Blood Pressure */}
               <Card className="border-blue-200">
                 <CardContent className="p-4">
@@ -998,8 +1583,7 @@ export default function DeviceSimulator() {
                 </CardContent>
               </Card>
             </div>
-          </div>
-        </div>
+      </div>
 
       {/* Comprehensive Summary Modal - Shows only after comprehensive analysis completes */}
       <Dialog open={showSummaryModal} onOpenChange={setShowSummaryModal}>
