@@ -1,0 +1,5 @@
+{
+  "mongoUri": "mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/djaja?retryWrites=true&w=majority",
+  "jwtSecret": "your-super-secret-jwt-key-change-this-in-production",
+  "port": 5000
+}

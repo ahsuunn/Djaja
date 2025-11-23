@@ -32,6 +32,12 @@
     "icon": [
       "icons/djaja.ico"
     ],
+    "resources": [
+      "../server/dist/**/*",
+      "../server/node_modules/**/*",
+      "../server/package.json",
+      "../server/config.json"
+    ],
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",

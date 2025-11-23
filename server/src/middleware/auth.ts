@@ -1,10 +1,35 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import fs from 'fs';
+import path from 'path';
 import User, { IUser } from '../models/User';
 
 interface JwtPayload {
   userId: string;
   role: string;
+}
+
+// Cache JWT secret for performance
+let jwtSecret: string | null = null;
+
+function getJwtSecret(): string {
+  if (jwtSecret) return jwtSecret;
+  
+  // Try config file first
+  const configPath = path.join(process.cwd(), 'config.json');
+  if (fs.existsSync(configPath)) {
+    try {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      jwtSecret = config.jwtSecret;
+      return jwtSecret!;
+    } catch (error) {
+      console.warn('⚠️ Failed to read JWT secret from config.json');
+    }
+  }
+  
+  // Fallback to environment variable
+  jwtSecret = process.env.JWT_SECRET || '';
+  return jwtSecret;
 }
 
 export const auth = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -16,7 +41,7 @@ export const auth = async (req: Request, res: Response, next: NextFunction): Pro
       return;
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload;
+    const decoded = jwt.verify(token, getJwtSecret()) as JwtPayload;
     const user = await User.findById(decoded.userId).select('-password');
 
     if (!user || !user.isActive) {

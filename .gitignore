@@ -38,3 +38,5 @@ next-env.d.ts
 # server
 server/node_modules
 server/.env
+server/config.json
+server/dist
