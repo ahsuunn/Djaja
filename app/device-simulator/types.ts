@@ -14,7 +14,7 @@ export interface VitalSigns {
 
 export interface DiseaseIndicator {
   condition: string;
-  likelihood: 'low' | 'moderate' | 'high' | 'critical';
+  likelihood: 'normal' | 'caution' | 'warning' | 'critical';
   indicators: string[];
 }
 
@@ -33,6 +33,19 @@ export interface Recommendation {
 }
 
 export interface DiagnosticResult {
+  deviceId: string;
+  patientId: string;
+  bloodPressure?: {
+    systolic: number;
+    diastolic: number;
+  };
+  heartRate?: number;
+  spO2?: number;
+  temperature?: number;
+  ekg?: {
+    rhythm: 'regular' | 'irregular';
+  };
+  timestamp: string;
   analysis: {
     bloodPressure?: { status: string; message: string };
     heartRate?: { status: string; message: string };
@@ -44,7 +57,7 @@ export interface DiagnosticResult {
   diseaseIndicators: DiseaseIndicator[];
   prescriptions: Medication[];
   recommendations: Recommendation[];
-  overallRisk: 'low' | 'moderate' | 'high' | 'critical';
+  overallRisk: 'normal' | 'caution' | 'warning' | 'critical';
   processedAt: string;
 }
 

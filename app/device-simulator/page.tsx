@@ -1,13 +1,12 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Activity, Heart, Droplet, Stethoscope, Zap, Play, Pause, Wifi, WifiOff, Thermometer, FileText } from 'lucide-react';
+import { Activity, Heart, Droplet, Stethoscope, Zap, Play, Pause, Thermometer, FileText } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
-import io, { Socket } from 'socket.io-client';
 import { DiagnosticResult, StreamingState, VitalHistory, VitalSigns } from './types';
 import { generateRandomVitals, generatePartialVitals, addToHistory, generateECGPoint, getStatusColor } from './utils';
 import PatientSelector, { Patient } from '@/components/PatientSelector';
@@ -18,7 +17,6 @@ import { generateMinimalistPDF } from '@/lib/pdf-utils';
 import { toast } from 'sonner';
 
 export default function DeviceSimulator() {
-  const [socket, setSocket] = useState<Socket | null>(null);
   const [vitals, setVitals] = useState<VitalSigns>({
     bloodPressure: { systolic: 0, diastolic: 0 },
     heartRate: 0,
@@ -27,8 +25,7 @@ export default function DeviceSimulator() {
     ekg: { rhythm: 'regular' },
   });
   const [result, setResult] = useState<DiagnosticResult | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const [isSending, setIsSending] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isStreaming, setIsStreaming] = useState<StreamingState>({
     bloodPressure: false,
     heartRate: false,
@@ -68,47 +65,18 @@ export default function DeviceSimulator() {
   const [isSavingObservation, setIsSavingObservation] = useState(false);
   const [observationSaved, setObservationSaved] = useState(false);
 
-  useEffect(() => {
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:5000';
-    const newSocket = io(wsUrl);
-
-    newSocket.on('connect', () => {
-      setIsConnected(true);
-      console.log('Connected to server');
-    });
-
-    newSocket.on('disconnect', () => {
-      setIsConnected(false);
-      console.log('Disconnected from server');
-    });
-
-    newSocket.on('diagnostic-result', (data: DiagnosticResult) => {
-      setResult(data);
-      setIsSending(false);
-      if (isComprehensiveAnalysisRef.current) {
-        setShowSummaryModal(true);
-        isComprehensiveAnalysisRef.current = false;
-      }
-    });
-
-    setSocket(newSocket);
-
-    return () => {
-      newSocket.close();
-    };
-  }, []);
-
   const handleGenerateRandomVitals = () => {
     setVitals(generateRandomVitals());
   };
 
-  const startComprehensiveAnalysis = () => {
-    if (!isConnected) {
-      alert('Not connected to server. Please ensure the backend is running.');
+  const startComprehensiveAnalysis = async () => {
+    if (!selectedPatient) {
+      toast.error('Please select a patient first', {
+        duration: 3000,
+      });
       return;
     }
-    
-    isComprehensiveAnalysisRef.current = true;
+
     setIsCollectingVitals(true);
     setCollectedReadings(0);
     setResult(null);
@@ -120,17 +88,143 @@ export default function DeviceSimulator() {
     
     // Collect readings over time
     let readingCount = 0;
-    const collectionInterval = setInterval(() => {
+    const collectionInterval = setInterval(async () => {
       readingCount++;
       setCollectedReadings(readingCount);
       
       if (readingCount >= totalReadingsNeeded) {
         clearInterval(collectionInterval);
         setIsCollectingVitals(false);
-        // Send final comprehensive data
-        sendToCloud(initialVitals);
+        // Perform diagnostic analysis
+        await performDiagnosticAnalysis(initialVitals);
       }
     }, 1000);
+  };
+
+  const performDiagnosticAnalysis = async (vitalData: VitalSigns) => {
+    try {
+      setIsAnalyzing(true);
+      toast.loading('Analyzing vitals...', { id: 'analysis' });
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      
+      const deviceData = {
+        deviceId: `SIM-${Date.now()}`,
+        patientId: selectedPatient?.patientId || 'demo-patient',
+        bloodPressure: vitalData.bloodPressure,
+        heartRate: vitalData.heartRate,
+        spO2: vitalData.spO2,
+        temperature: vitalData.temperature,
+        ekg: vitalData.ekg,
+        timestamp: new Date().toISOString(),
+      };
+
+      const response = await fetch(`${apiUrl}/api/diagnostics/analyze`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(deviceData),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to analyze vitals');
+      }
+
+      const diagnosticResult = await response.json();
+      setResult(diagnosticResult);
+      setShowSummaryModal(true);
+
+      toast.success('Analysis complete!', { 
+        id: 'analysis',
+        duration: 2000,
+      });
+    } catch (error) {
+      console.error('Error analyzing vitals:', error);
+      toast.error('Failed to analyze vitals. Using offline analysis.', { 
+        id: 'analysis',
+        duration: 4000,
+      });
+      // Fallback to client-side analysis if API fails
+      const offlineResult = generateOfflineAnalysis(vitalData);
+      setResult(offlineResult);
+      setShowSummaryModal(true);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  // Offline fallback analysis
+  const generateOfflineAnalysis = (data: VitalSigns): DiagnosticResult => {
+    const analysis: any = {};
+    const diseaseIndicators: any[] = [];
+    const recommendations: any[] = [];
+    let overallRisk: 'normal' | 'caution' | 'warning' | 'critical' = 'normal';
+
+    // Blood Pressure
+    const { systolic, diastolic } = data.bloodPressure;
+    if (systolic >= 180 || diastolic >= 120) {
+      analysis.bloodPressure = { status: 'critical', message: 'Hypertensive Crisis' };
+      overallRisk = 'critical';
+    } else if (systolic >= 140 || diastolic >= 90) {
+      analysis.bloodPressure = { status: 'warning', message: 'Stage 2 Hypertension' };
+      if (overallRisk === 'normal' || overallRisk === 'caution') overallRisk = 'warning';
+    } else if (systolic >= 120) {
+      analysis.bloodPressure = { status: 'caution', message: 'Elevated Blood Pressure' };
+    } else {
+      analysis.bloodPressure = { status: 'normal', message: 'Normal Blood Pressure' };
+    }
+
+    // Heart Rate
+    if (data.heartRate > 100) {
+      analysis.heartRate = { status: 'warning', message: 'Tachycardia' };
+    } else if (data.heartRate < 60) {
+      analysis.heartRate = { status: 'warning', message: 'Bradycardia' };
+    } else {
+      analysis.heartRate = { status: 'normal', message: 'Normal Heart Rate' };
+    }
+
+    // SpO2
+    if (data.spO2 < 90) {
+      analysis.spO2 = { status: 'critical', message: 'Severe Hypoxia' };
+      overallRisk = 'critical';
+    } else if (data.spO2 < 95) {
+      analysis.spO2 = { status: 'warning', message: 'Mild Hypoxia' };
+    } else {
+      analysis.spO2 = { status: 'normal', message: 'Normal Oxygen Saturation' };
+    }
+
+    // Temperature
+    if (data.temperature >= 39.5) {
+      analysis.temperature = { status: 'critical', message: 'High Fever' };
+    } else if (data.temperature >= 38.0) {
+      analysis.temperature = { status: 'warning', message: 'Fever' };
+    } else if (data.temperature < 35.0) {
+      analysis.temperature = { status: 'warning', message: 'Hypothermia' };
+    } else {
+      analysis.temperature = { status: 'normal', message: 'Normal Temperature' };
+    }
+
+    // EKG
+    analysis.ekg = { status: 'normal', message: 'Normal Sinus Rhythm' };
+
+    return {
+      deviceId: `SIM-${Date.now()}`,
+      patientId: selectedPatient?.patientId || 'demo-patient',
+      bloodPressure: data.bloodPressure,
+      heartRate: data.heartRate,
+      spO2: data.spO2,
+      temperature: data.temperature,
+      ekg: data.ekg,
+      timestamp: new Date().toISOString(),
+      processedAt: new Date().toISOString(),
+      analysis,
+      diseaseIndicators,
+      prescriptions: [],
+      recommendations,
+      overallRisk,
+      summary: `Comprehensive vital signs analysis completed. Overall risk: ${overallRisk}.`,
+    };
   };
 
   const finishDiagnostic = async () => {
@@ -398,38 +492,10 @@ export default function DeviceSimulator() {
     }
   };
 
-  const sendToCloud = (vitalData?: VitalSigns) => {
-    if (!socket || !isConnected) {
-      alert('Not connected to server. Please ensure the backend is running.');
-      return;
-    }
 
-    const dataToSend = vitalData || vitals;
-    setIsSending(true);
-    setResult(null);
-
-    const deviceData = {
-      deviceId: `SIM-${Date.now()}`,
-      patientId: selectedPatient?.patientId || 'demo-patient',
-      bloodPressure: dataToSend.bloodPressure,
-      heartRate: dataToSend.heartRate,
-      spO2: dataToSend.spO2,
-      temperature: dataToSend.temperature,
-      ekg: dataToSend.ekg,
-      timestamp: new Date().toISOString(),
-    };
-
-    socket.emit('device-data', deviceData);
-    console.log('📡 Sending data:', deviceData);
-  };
 
   // Start streaming individual vital
   const startVitalStreaming = (vitalType: keyof StreamingState) => {
-    if (!isConnected) {
-      alert('Not connected to server. Please ensure the backend is running.');
-      return;
-    }
-
     // Stop all currently streaming vitals before starting the new one
     Object.keys(isStreaming).forEach((key) => {
       if (isStreaming[key as keyof StreamingState]) {
@@ -476,8 +542,6 @@ export default function DeviceSimulator() {
               break;
           }
 
-          // Send only the updated vitals snapshot to cloud
-          sendToCloud(updated);
           return updated;
         });
       }, streamInterval);
@@ -566,12 +630,12 @@ export default function DeviceSimulator() {
               <p className="text-slate-600 text-sm">Real-time medical device monitoring and AI diagnostics</p>
             </div>
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
-                <span className="text-sm font-medium text-slate-700">
-                  {isConnected ? 'Cloud Connected' : 'Disconnected'}
-                </span>
-              </div>
+              {isAnalyzing && (
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                  <span className="text-sm font-medium text-slate-700">Analyzing...</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -757,7 +821,7 @@ export default function DeviceSimulator() {
             <Card className="bg-white border-2 border-primary">
               <CardHeader className="pb-4">
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <Wifi className="w-5 h-5" />
+                  <Activity className="w-5 h-5" />
                   Control Panel
                 </CardTitle>
                 <CardDescription>Manage device streaming and analysis</CardDescription>
@@ -803,7 +867,7 @@ export default function DeviceSimulator() {
                     bgColor="bg-purple-50"
                     borderColor="border-purple-200"
                     isStreaming={isStreaming.ekg}
-                    isDisabled={!selectedPatient || !isConnected}
+                    isDisabled={!selectedPatient}
                     onStart={() => startVitalStreaming('ekg')}
                     onStop={() => stopVitalStreaming('ekg')}
                   />
@@ -815,7 +879,7 @@ export default function DeviceSimulator() {
                     bgColor="bg-cyan-50"
                     borderColor="border-cyan-200"
                     isStreaming={isStreaming.stethoscope}
-                    isDisabled={!selectedPatient || !isConnected}
+                    isDisabled={!selectedPatient}
                     onStart={() => startVitalStreaming('stethoscope')}
                     onStop={() => stopVitalStreaming('stethoscope')}
                   />
@@ -827,7 +891,7 @@ export default function DeviceSimulator() {
                     bgColor="bg-blue-50"
                     borderColor="border-blue-200"
                     isStreaming={isStreaming.bloodPressure}
-                    isDisabled={!selectedPatient || !isConnected}
+                    isDisabled={!selectedPatient}
                     onStart={() => startVitalStreaming('bloodPressure')}
                     onStop={() => stopVitalStreaming('bloodPressure')}
                   />
@@ -839,7 +903,7 @@ export default function DeviceSimulator() {
                     bgColor="bg-red-50"
                     borderColor="border-red-200"
                     isStreaming={isStreaming.heartRate}
-                    isDisabled={!selectedPatient || !isConnected}
+                    isDisabled={!selectedPatient}
                     onStart={() => startVitalStreaming('heartRate')}
                     onStop={() => stopVitalStreaming('heartRate')}
                   />
@@ -851,7 +915,7 @@ export default function DeviceSimulator() {
                     bgColor="bg-green-50"
                     borderColor="border-green-200"
                     isStreaming={isStreaming.spO2}
-                    isDisabled={!selectedPatient || !isConnected}
+                    isDisabled={!selectedPatient}
                     onStart={() => startVitalStreaming('spO2')}
                     onStop={() => stopVitalStreaming('spO2')}
                   />
@@ -863,7 +927,7 @@ export default function DeviceSimulator() {
                     bgColor="bg-orange-50"
                     borderColor="border-orange-200"
                     isStreaming={isStreaming.temperature}
-                    isDisabled={!selectedPatient || !isConnected}
+                    isDisabled={!selectedPatient}
                     onStart={() => startVitalStreaming('temperature')}
                     onStop={() => stopVitalStreaming('temperature')}
                   />
@@ -873,7 +937,7 @@ export default function DeviceSimulator() {
                 <div className="border-t pt-4 space-y-3">
                   <Button
                     onClick={startComprehensiveAnalysis}
-                    disabled={!selectedPatient || !isConnected || isSending || anyStreaming || isCollectingVitals}
+                    disabled={!selectedPatient || anyStreaming || isCollectingVitals}
                     className="w-full"
                   >
                     {isCollectingVitals ? `Collecting... ${collectedReadings}/${totalReadingsNeeded}` : 'Start Comprehensive Analysis'}
@@ -932,7 +996,7 @@ export default function DeviceSimulator() {
                       <Button
                         size="sm"
                         onClick={() => startVitalStreaming('bloodPressure')}
-                        disabled={!selectedPatient || !isConnected}
+                        disabled={!selectedPatient}
                         className="ml-4"
                       >
                         <Play className="w-4 h-4 mr-1" />
@@ -986,7 +1050,7 @@ export default function DeviceSimulator() {
                       <Button
                         size="sm"
                         onClick={() => startVitalStreaming('heartRate')}
-                        disabled={!selectedPatient || !isConnected}
+                        disabled={!selectedPatient}
                         className="ml-4"
                       >
                         <Play className="w-4 h-4 mr-1" />
@@ -1040,7 +1104,7 @@ export default function DeviceSimulator() {
                       <Button
                         size="sm"
                         onClick={() => startVitalStreaming('spO2')}
-                        disabled={!selectedPatient || !isConnected}
+                        disabled={!selectedPatient}
                         className="ml-4"
                       >
                         <Play className="w-4 h-4 mr-1" />
@@ -1094,7 +1158,7 @@ export default function DeviceSimulator() {
                       <Button
                         size="sm"
                         onClick={() => startVitalStreaming('temperature')}
-                        disabled={!selectedPatient || !isConnected}
+                        disabled={!selectedPatient}
                         className="ml-4"
                       >
                         <Play className="w-4 h-4 mr-1" />
@@ -1154,7 +1218,7 @@ export default function DeviceSimulator() {
                       <Button
                         size="sm"
                         onClick={() => startVitalStreaming('ekg')}
-                        disabled={!selectedPatient || !isConnected}
+                        disabled={!selectedPatient}
                         className="ml-4"
                       >
                         <Play className="w-4 h-4 mr-1" />
@@ -1328,8 +1392,8 @@ export default function DeviceSimulator() {
                     <div className="mb-2">
                       <span className={`inline-block px-3 py-1 rounded text-xs font-semibold ${
                         result.overallRisk === 'critical' ? 'bg-red-100 text-red-800' :
-                        result.overallRisk === 'high' ? 'bg-orange-100 text-orange-800' :
-                        result.overallRisk === 'moderate' ? 'bg-yellow-100 text-yellow-800' :
+                        result.overallRisk === 'warning' ? 'bg-orange-100 text-orange-800' :
+                        result.overallRisk === 'caution' ? 'bg-yellow-100 text-yellow-800' :
                         'bg-green-100 text-green-800'
                       }`}>
                         {result.overallRisk.toUpperCase()} RISK
@@ -1350,8 +1414,8 @@ export default function DeviceSimulator() {
                             <span className="font-medium text-gray-900">{indicator.condition}</span>
                             <span className={`text-xs px-2 py-0.5 rounded font-medium ${
                               indicator.likelihood === 'critical' ? 'bg-red-100 text-red-800' :
-                              indicator.likelihood === 'high' ? 'bg-orange-100 text-orange-800' :
-                              indicator.likelihood === 'moderate' ? 'bg-yellow-100 text-yellow-800' :
+                              indicator.likelihood === 'warning' ? 'bg-orange-100 text-orange-800' :
+                              indicator.likelihood === 'caution' ? 'bg-yellow-100 text-yellow-800' :
                               'bg-blue-100 text-blue-800'
                             }`}>
                               {indicator.likelihood.toUpperCase()}

@@ -1,69 +1,12 @@
-import express, { Request, Response } from 'express';
-import cors from 'cors';
-import http from 'http';
-import { Server, Socket } from 'socket.io';
-import mongoose from 'mongoose';
-import dotenv from 'dotenv';
+import { Router, Request, Response } from 'express';
 
-// Load environment variables
-dotenv.config();
+const router = Router();
 
-// Import routes
-import authRoutes from './routes/auth';
-import patientRoutes from './routes/patients';
-import observationRoutes from './routes/observations';
-import userRoutes from './routes/users';
-import facilityRoutes from './routes/facilities';
-import fhirRoutes from './routes/fhir';
-import diagnosticsRoutes from './routes/diagnostics';
-
-// MongoDB connection
-mongoose
-  .connect(process.env.MONGODB_URI as string, {
-    dbName: 'djaja'
-  })
-  .then(() => {
-    console.log('✅ Connected to MongoDB');
-  })
-  .catch((err) => {
-    console.error('❌ MongoDB connection error:', err);
-  });
-
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-    methods: ['GET', 'POST'],
-  },
-});
-
-// Middleware
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-  credentials: true,
-}));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/patients', patientRoutes);
-app.use('/api/observations', observationRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/facilities', facilityRoutes);
-app.use('/api/fhir', fhirRoutes);
-app.use('/api/diagnostics', diagnosticsRoutes);
-
-// Health check
-app.get('/api/health', (req: Request, res: Response) => {
-  res.json({ status: 'OK', message: 'Djaja Diagnostics API is running' });
-});
-
-// WebSocket interfaces
+// Types for diagnostic analysis
 interface DeviceData {
   deviceId: string;
-  patientId: string;
+  patientId?: string;
+  timestamp: string;
   bloodPressure?: {
     systolic: number;
     diastolic: number;
@@ -73,28 +16,28 @@ interface DeviceData {
   temperature?: number;
   glucose?: number;
   ekg?: {
-    rhythm: 'regular' | 'irregular';
+    rhythm: string;
+    rate: number;
   };
-  timestamp: string;
 }
 
-interface AnalysisResult {
-  status: string;
+interface VitalAnalysis {
+  status: 'normal' | 'caution' | 'warning' | 'critical';
   message: string;
 }
 
 interface VitalsAnalysis {
-  bloodPressure?: AnalysisResult;
-  heartRate?: AnalysisResult;
-  spO2?: AnalysisResult;
-  glucose?: AnalysisResult;
-  ekg?: AnalysisResult;
-  temperature?: AnalysisResult;
+  bloodPressure?: VitalAnalysis;
+  heartRate?: VitalAnalysis;
+  spO2?: VitalAnalysis;
+  temperature?: VitalAnalysis;
+  glucose?: VitalAnalysis;
+  ekg?: VitalAnalysis;
 }
 
 interface DiseaseIndicator {
   condition: string;
-  likelihood: 'low' | 'moderate' | 'high' | 'critical';
+  likelihood: 'normal' | 'caution' | 'warning' | 'critical';
   indicators: string[];
 }
 
@@ -107,8 +50,8 @@ interface Medication {
 }
 
 interface Recommendation {
-  type: 'teleconsultation' | 'hospital_referral' | 'follow_up' | 'lifestyle';
-  urgency: 'immediate' | 'urgent' | 'routine';
+  type: 'lifestyle' | 'follow_up' | 'teleconsultation' | 'hospital_referral';
+  urgency: 'routine' | 'urgent' | 'immediate';
   message: string;
 }
 
@@ -118,28 +61,8 @@ interface ComprehensiveAnalysis {
   diseaseIndicators: DiseaseIndicator[];
   prescriptions: Medication[];
   recommendations: Recommendation[];
-  overallRisk: 'low' | 'moderate' | 'high' | 'critical';
+  overallRisk: 'normal' | 'caution' | 'warning' | 'critical';
 }
-
-// WebSocket for IoT device simulation
-io.on('connection', (socket: Socket) => {
-  console.log('Device connected:', socket.id);
-
-  socket.on('device-data', (data: DeviceData) => {
-    console.log('Received device data:', data);
-    // Broadcast to all connected clients (simulating cloud processing)
-    const comprehensiveAnalysis = generateComprehensiveAnalysis(data);
-    io.emit('diagnostic-result', {
-      ...data,
-      processedAt: new Date().toISOString(),
-      ...comprehensiveAnalysis,
-    });
-  });
-
-  socket.on('disconnect', () => {
-    console.log('Device disconnected:', socket.id);
-  });
-});
 
 // Simple diagnostic analysis function (rule-based)
 function analyzeVitals(data: DeviceData): VitalsAnalysis {
@@ -236,7 +159,7 @@ function generateComprehensiveAnalysis(data: DeviceData): ComprehensiveAnalysis 
   const diseaseIndicators: DiseaseIndicator[] = [];
   const prescriptions: Medication[] = [];
   const recommendations: Recommendation[] = [];
-  let overallRisk: 'low' | 'moderate' | 'high' | 'critical' = 'low';
+  let overallRisk: 'normal' | 'caution' | 'warning' | 'critical' = 'normal';
   
   const abnormalFindings: string[] = [];
   const criticalCount = Object.values(analysis).filter(a => a.status === 'critical').length;
@@ -246,9 +169,9 @@ function generateComprehensiveAnalysis(data: DeviceData): ComprehensiveAnalysis 
   if (criticalCount > 0) {
     overallRisk = 'critical';
   } else if (warningCount >= 2) {
-    overallRisk = 'high';
+    overallRisk = 'warning';
   } else if (warningCount === 1) {
-    overallRisk = 'moderate';
+    overallRisk = 'caution';
   }
 
   // Disease Indicators and Prescriptions based on vital signs
@@ -272,7 +195,7 @@ function generateComprehensiveAnalysis(data: DeviceData): ComprehensiveAnalysis 
       abnormalFindings.push('Stage 2 Hypertension');
       diseaseIndicators.push({
         condition: 'Hypertension (Stage 2)',
-        likelihood: 'high',
+        likelihood: 'warning',
         indicators: [`Blood Pressure: ${systolic}/${diastolic} mmHg`, 'Persistent high blood pressure', 'Risk of cardiovascular disease']
       });
       prescriptions.push({
@@ -296,7 +219,7 @@ function generateComprehensiveAnalysis(data: DeviceData): ComprehensiveAnalysis 
       abnormalFindings.push('Stage 1 Hypertension');
       diseaseIndicators.push({
         condition: 'Hypertension (Stage 1)',
-        likelihood: 'moderate',
+        likelihood: 'caution',
         indicators: [`Blood Pressure: ${systolic}/${diastolic} mmHg`, 'Mildly elevated blood pressure']
       });
       recommendations.push({
@@ -319,7 +242,7 @@ function generateComprehensiveAnalysis(data: DeviceData): ComprehensiveAnalysis 
       abnormalFindings.push('Irregular heart rhythm');
       diseaseIndicators.push({
         condition: 'Cardiac Arrhythmia',
-        likelihood: 'high',
+        likelihood: 'warning',
         indicators: ['Irregular EKG rhythm detected', `Heart Rate: ${hr} bpm`, 'May indicate atrial fibrillation or other arrhythmias']
       });
       recommendations.push({
@@ -331,14 +254,14 @@ function generateComprehensiveAnalysis(data: DeviceData): ComprehensiveAnalysis 
       abnormalFindings.push(`Tachycardia (${hr} bpm)`);
       diseaseIndicators.push({
         condition: 'Tachycardia',
-        likelihood: 'moderate',
+        likelihood: 'caution',
         indicators: [`Heart Rate: ${hr} bpm (normal: 60-100)`, 'Rapid heart rate']
       });
     } else if (hr < 60) {
       abnormalFindings.push(`Bradycardia (${hr} bpm)`);
       diseaseIndicators.push({
         condition: 'Bradycardia',
-        likelihood: 'moderate',
+        likelihood: 'caution',
         indicators: [`Heart Rate: ${hr} bpm (normal: 60-100)`, 'Slow heart rate']
       });
     }
@@ -361,7 +284,7 @@ function generateComprehensiveAnalysis(data: DeviceData): ComprehensiveAnalysis 
     } else {
       diseaseIndicators.push({
         condition: 'Hypoxemia',
-        likelihood: 'high',
+        likelihood: 'warning',
         indicators: [`SpO2: ${data.spO2}% (normal: >95%)`, 'Mild to moderate oxygen deficiency']
       });
       recommendations.push({
@@ -396,7 +319,7 @@ function generateComprehensiveAnalysis(data: DeviceData): ComprehensiveAnalysis 
     } else {
       diseaseIndicators.push({
         condition: 'Fever (Possible Infection)',
-        likelihood: 'moderate',
+        likelihood: 'caution',
         indicators: [`Temperature: ${data.temperature}°C`, 'May indicate viral or bacterial infection']
       });
       prescriptions.push({
@@ -423,20 +346,20 @@ function generateComprehensiveAnalysis(data: DeviceData): ComprehensiveAnalysis 
   let summary = '';
   if (overallRisk === 'critical') {
     summary = `CRITICAL: Immediate medical attention required. ${abnormalFindings.length} critical finding(s) detected: ${abnormalFindings.join(', ')}. Patient requires emergency care.`;
-  } else if (overallRisk === 'high') {
-    summary = `HIGH RISK: Multiple abnormal vital signs detected: ${abnormalFindings.join(', ')}. Urgent medical consultation recommended within 24 hours.`;
-  } else if (overallRisk === 'moderate') {
-    summary = `MODERATE RISK: ${abnormalFindings.length} abnormal finding(s): ${abnormalFindings.join(', ')}. Follow-up and monitoring recommended.`;
+  } else if (overallRisk === 'warning') {
+    summary = `WARNING: Multiple abnormal vital signs detected: ${abnormalFindings.join(', ')}. Urgent medical consultation recommended within 24 hours.`;
+  } else if (overallRisk === 'caution') {
+    summary = `CAUTION: ${abnormalFindings.length} abnormal finding(s): ${abnormalFindings.join(', ')}. Follow-up and monitoring recommended.`;
   } else {
     summary = 'All vital signs within normal ranges. Continue regular health monitoring and maintain healthy lifestyle.';
   }
 
   // Add general lifestyle recommendations for all patients
-  if (overallRisk === 'low') {
+  if (overallRisk === 'normal') {
     recommendations.push({
       type: 'lifestyle',
       urgency: 'routine',
-      message: 'Maintain healthy diet, regular exercise, adequate sleep, and stress management.'
+      message: 'Maintain healthy diet, regular exercise, adequate sleep, and stress management.',
     });
   }
 
@@ -450,9 +373,28 @@ function generateComprehensiveAnalysis(data: DeviceData): ComprehensiveAnalysis 
   };
 }
 
-const PORT = process.env.PORT || 5000;
+// POST /api/diagnostics/analyze - Analyze device data and return comprehensive diagnostic results
+router.post('/analyze', async (req: Request, res: Response) => {
+  try {
+    const deviceData: DeviceData = req.body;
+    
+    if (!deviceData.deviceId || !deviceData.timestamp) {
+      return res.status(400).json({ error: 'Missing required fields: deviceId and timestamp' });
+    }
 
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📡 WebSocket server ready for IoT connections`);
+    // Generate comprehensive analysis
+    const comprehensiveAnalysis = generateComprehensiveAnalysis(deviceData);
+    
+    // Return results with device data and processing timestamp
+    res.json({
+      ...deviceData,
+      processedAt: new Date().toISOString(),
+      ...comprehensiveAnalysis,
+    });
+  } catch (error) {
+    console.error('Error analyzing device data:', error);
+    res.status(500).json({ error: 'Failed to analyze device data' });
+  }
 });
+
+export default router;
