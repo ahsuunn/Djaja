@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Activity, Mail, Lock, AlertCircle } from 'lucide-react';
+import Image from 'next/image';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -76,10 +77,17 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2 mb-2">
-            <Activity className="w-12 h-12 text-primary" />
-            <span className="text-4xl font-bold text-primary">Djaja</span>
+            <div className="relative h-10 w-auto">
+              <Image 
+                src="/images/djaja-horizontal-notext.png" 
+                alt="Djaja Logo" 
+                height={60} 
+                width={120}
+                className="object-contain"
+                priority
+              />
+            </div>
           </Link>
-          <p className="text-muted-foreground">Diagnostics-as-a-Service Platform</p>
         </div>
 
         <Card>
