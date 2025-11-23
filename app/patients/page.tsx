@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +32,7 @@ interface Patient {
 }
 
 export default function PatientsPage() {
+  const searchParams = useSearchParams();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -59,6 +61,14 @@ export default function PatientsPage() {
   useEffect(() => {
     fetchPatients();
   }, []);
+
+  // Check if we should auto-open the add patient modal
+  useEffect(() => {
+    const addNew = searchParams.get('addNew');
+    if (addNew === 'true') {
+      setShowAddModal(true);
+    }
+  }, [searchParams]);
 
   const fetchPatients = async () => {
     try {

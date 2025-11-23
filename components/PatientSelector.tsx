@@ -148,15 +148,16 @@ export default function PatientSelector({
               </div>
             )}
           </div>
-
-          <Button
-            onClick={() => window.open('/patients', '_blank')}
-            variant="outline"
-            className="flex-shrink-0"
-          >
-            <UserPlus className="w-4 h-4 mr-2" />
-            Add Patient
-          </Button>
+        
+            <a href='/patients?addNew=true'>
+            <Button
+                variant="outline"
+                className="flex-shrink-0"
+            >
+                <UserPlus className="w-4 h-4 mr-2" />
+                Add Patient
+            </Button>
+            </a>
         </div>
 
         {/* Selected Patient Display */}

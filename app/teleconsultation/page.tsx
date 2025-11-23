@@ -291,10 +291,10 @@ export default function TelemedicinePage() {
                       {isJitsiLoaded ? 'Start Video Call' : 'Loading...'}
                     </Button>
                     {!selectedPatient && (
-                      <p className="text-sm text-amber-600 mt-4">⚠️ Patient selection is required</p>
+                      <p className="text-sm text-amber-600 mt-4">Patient selection is required</p>
                     )}
                     {!isJitsiLoaded && selectedPatient && (
-                      <p className="text-sm text-amber-600 mt-4">⏳ Please wait for video system to load</p>
+                      <p className="text-sm text-amber-600 mt-4">Please wait for video system to load</p>
                     )}
                   </div>
                 ) : (
