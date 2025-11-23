@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Activity, Users, AlertTriangle, CheckCircle, TrendingUp, Heart } from 'lucide-react';
+import ServerStatus from '@/components/ServerStatus';
 
 export default function Dashboard() {
   const [stats, setStats] = useState({
@@ -82,6 +83,11 @@ export default function Dashboard() {
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-primary mb-2">Healthcare Facility Dashboard</h1>
           <p className="text-muted-foreground">Real-time monitoring and analytics</p>
+        </div>
+
+        {/* Server Status - Only visible in desktop app */}
+        <div className="mb-6">
+          <ServerStatus />
         </div>
 
         {/* Stats Grid */}
