@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Activity, Heart, Droplet, Stethoscope, Zap, Play, Pause, Wifi, WifiOff, Thermometer } from 'lucide-react';
+import { Activity, Heart, Droplet, Stethoscope, Zap, Play, Pause, Wifi, WifiOff, Thermometer, FileText } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import io, { Socket } from 'socket.io-client';
 import { DiagnosticResult, StreamingState, VitalHistory, VitalSigns } from './types';
@@ -702,6 +703,16 @@ export default function DeviceSimulator() {
                       {isCollectingVitals ? `Collecting Data... ${collectedReadings}/${totalReadingsNeeded}` : 'Start Comprehensive Analysis'}
                     </Button>
                   </div>
+                  {result && (
+                    <Button
+                      onClick={() => setShowSummaryModal(true)}
+                      variant="outline"
+                      className="w-full"
+                    >
+                      <FileText className="w-4 h-4 mr-2" />
+                      Open Summary Report
+                    </Button>
+                  )}
                   {!selectedPatient && (
                     <p className="text-xs text-red-600 text-center mt-1"> Please select a patient first</p>
                   )}
@@ -991,30 +1002,27 @@ export default function DeviceSimulator() {
         </div>
 
       {/* Comprehensive Summary Modal - Shows only after comprehensive analysis completes */}
-      {showSummaryModal && result && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowSummaryModal(false)}>
-          <div className="bg-white rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <div className="sticky top-0 bg-white border-b p-6 flex items-center justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">Comprehensive Medical Summary</h2>
-                  <p className="text-sm text-gray-600">Generated: {new Date(result.processedAt).toLocaleString()}</p>
-                </div>
-                <div className="flex gap-2">
-                  <Button onClick={downloadPDF} variant="outline" size="sm">
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    Download PDF
-                  </Button>
-                  <Button onClick={() => setShowSummaryModal(false)} variant="ghost" size="sm">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </Button>
-                </div>
+      <Dialog open={showSummaryModal} onOpenChange={setShowSummaryModal}>
+        <DialogContent className="max-w-4xl max-h-[90vh] p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b">
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle className="text-2xl font-bold text-primary">Comprehensive Medical Summary</DialogTitle>
+                <DialogDescription>
+                  {result && `Generated: ${new Date(result.processedAt).toLocaleString()}`}
+                </DialogDescription>
               </div>
+              <Button onClick={downloadPDF} variant="outline" size="sm">
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Download PDF
+              </Button>
+            </div>
+          </DialogHeader>
 
-              <div className="p-6 space-y-6">
+          {result && (
+            <div className="p-6 space-y-6 overflow-y-auto dialog-scroll" style={{ maxHeight: 'calc(90vh - 180px)' }}>
                 {/* Patient Information */}
                 <div className="bg-gray-50 rounded-lg p-4 border">
                   <h3 className="font-semibold text-lg mb-3 text-gray-900">Patient Information</h3>
@@ -1198,22 +1206,22 @@ export default function DeviceSimulator() {
                     </div>
                   </div>
                 )}
-              </div>
-
-              <div className="sticky bottom-0 bg-gray-50 border-t p-4 flex justify-end gap-3">
-                <Button onClick={() => setShowSummaryModal(false)} variant="outline">
-                  Close
-                </Button>
-                <Button onClick={downloadPDF} className="bg-blue-600 hover:bg-blue-700">
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  Download PDF
-                </Button>
-              </div>
             </div>
+          )}
+
+          <div className="bg-gray-50 border-t p-4 flex justify-end gap-3">
+            <Button onClick={() => setShowSummaryModal(false)} variant="outline">
+              Close
+            </Button>
+            <Button onClick={downloadPDF} className="bg-blue-600 hover:bg-blue-700">
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Download PDF
+            </Button>
           </div>
-        )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
