@@ -8,7 +8,7 @@
 
 ## 🎯 Project Overview
 
-Djaja is a comprehensive telemedicine and diagnostics platform designed for the **TED 2025 Hackathon**. This MVP simulates IoT-based diagnostic devices and provides a complete cloud diagnostic infrastructure with AI-assisted analysis, electronic medical records (FHIR-compliant), and telemedicine capabilities.
+Djaja is a comprehensive telemedicine and diagnostics platform. This MVP simulates IoT-based diagnostic devices and provides a complete cloud diagnostic infrastructure with AI-assisted analysis, electronic medical records (FHIR-compliant), and telemedicine capabilities.
 
 ### 🌟 Key Features
 
